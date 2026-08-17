@@ -516,6 +516,7 @@ function attach(ws, room, player) {
   ws._player = player;
   player.ws = ws;
   player.connected = true;
+  player.lastSeen = Date.now();
   ensureHost(room);
   send(player, {
     t: "joined",
@@ -539,6 +540,7 @@ function makePlayer(name, ready) {
     entkommen: 0,
     ready,
     connected: true,
+    lastSeen: Date.now(),
   };
 }
 
@@ -891,6 +893,8 @@ Deno.serve({ port: PORT, hostname: HOST }, (req, info) => {
         return;
       }
       if (msg && typeof msg.t === "string") {
+        // Lebenszeichen fuer die Geisterwache weiter unten.
+        if (socket._player) socket._player.lastSeen = Date.now();
         try {
           handle(socket, msg);
         } catch (err) {
@@ -914,5 +918,36 @@ setInterval(() => {
     }
   }
 }, 60_000);
+
+
+/**
+ * Die Geisterwache. Gleiche Regel wie in `gemeinsam/raum.js`, hier von Hand:
+ * ein Socket, der offen aussieht und keiner mehr ist, ist auf dem Handy der
+ * Normalfall - wer wegwischt oder den Bildschirm sperrt, schickt kein FIN.
+ * Steht so ein Geist auf dem Hostplatz, wartet die ganze Lobby auf einen
+ * Startknopf, den niemand mehr druecken kann (Bugreport 4).
+ *
+ * `connected` allein ist deshalb kein Nachweis. Der Client meldet sich alle
+ * 25 s mit `ping`, auch wenn niemand spielt; jede eingehende Nachricht
+ * stempelt `lastSeen`. Wer zwei Pings lang schweigt, wird behandelt wie einer,
+ * dessen Verbindung ordentlich zuging.
+ */
+const GEIST_MS = (() => {
+  const n = Number(Deno.env.get("GEIST_MS"));
+  return Number.isFinite(n) && n >= 1000 ? n : 65_000;
+})();
+
+setInterval(() => {
+  const jetzt = Date.now();
+  for (const room of [...rooms.values()]) {
+    for (const player of [...room.players.values()]) {
+      if (!player.connected || !player.ws) continue;
+      if (jetzt - (player.lastSeen ?? jetzt) <= GEIST_MS) continue;
+      const ws = player.ws;
+      try { ws.close(4002, "stumm"); } catch { /* war ja schon tot */ }
+      dropPlayer(ws);
+    }
+  }
+}, Math.max(5_000, Math.floor(GEIST_MS / 4)));
 
 console.log(`IMPOSTER läuft auf http://${HOST}:${PORT}/`);
