@@ -91,7 +91,8 @@ console.log("ok  Start blockiert, solange nicht alle bereit sind");
 for (const c of [B, C, D, E]) c.send({ t: "ready", value: true });
 await bis(() => A.room.players.every((p) => p.ready || p.host), "alle bereit");
 
-A.send({ t: "settings", rounds: 8, hinweise: 1 });
+A.send({ t: "settings", rounds: 8, hinweise: 1, hilfswort: true });
+await bis(() => A.room.settings.hilfswort === true, "Hilfswort angeschaltet");
 await warte(120);
 A.send({ t: "start" });
 await bis(() => A.runde && A.room.phase === "playing", "Runde 1 läuft");
@@ -112,14 +113,27 @@ const von = (id) => alleC.find((c) => c.you === id);
   if (woerter.size !== 1) throw new Error("Die Gruppe hat nicht alle dasselbe Wort");
   const wort = [...woerter][0];
   if (!wort) throw new Error("Die Gruppe hat gar kein Wort bekommen");
-  // Die Wortliste dagegen sehen alle – ohne sie könnte der Imposter nichts sagen.
-  for (const c of alleC) {
+  // Die Wortliste sieht nur die Gruppe – der Imposter erst beim Raten.
+  for (const c of rest) {
     if (!c.runde.begriffe?.includes(wort)) {
       throw new Error(`${c.name} sieht die Wortliste nicht oder sie passt nicht`);
     }
+    if (c.runde.hilfswort !== null) {
+      throw new Error(`${c.name} bekommt ein Hilfswort, obwohl er kein Imposter ist`);
+    }
   }
+  if (imp.runde.begriffe) throw new Error("Der Imposter sieht die Wortliste!");
   console.log(`ok  Imposter ist ${imp.name}, Wort „${wort}" (Gruppe „${A.runde.gruppe}")`);
-  console.log("ok  nur der Imposter kennt das Wort nicht, die Liste sehen alle");
+  console.log("ok  nur die Gruppe kennt das Wort und sieht die Liste");
+
+  // --- Hilfswort: an in der Lobby, also genau eines – und nie das gesuchte.
+  const hw = imp.runde.hilfswort;
+  if (!hw) throw new Error("Hilfswort ist an, der Imposter bekommt aber keines");
+  if (hw === wort) throw new Error("Das Hilfswort ist das gesuchte Wort!");
+  if (!rest[0].runde.begriffe.includes(hw)) {
+    throw new Error("Das Hilfswort steht gar nicht in der Gruppe");
+  }
+  console.log(`ok  Imposter bekommt genau ein Hilfswort („${hw}"), nicht das gesuchte`);
 }
 
 // --- Rollen bestätigen: erst wenn alle gedrückt haben, geht es los ----------
@@ -173,6 +187,12 @@ const imp1 = alleC.find((c) => c.runde.binImposter);
   }
   await bis(() => A.runde.schritt === "raten", "Imposter erwischt, darf raten");
   console.log("ok  einstimmig erkannt → der Imposter kommt zum Raten");
+
+  // Erst jetzt bekommt er die Wortliste – ohne sie hätte er nichts zum Raten.
+  if (!imp1.runde.begriffe?.length) {
+    throw new Error("Der Imposter bekommt beim Raten keine Wortliste");
+  }
+  console.log("ok  die Wortliste bekommt der Imposter erst zum Raten");
 
   // Nur der Imposter darf raten.
   const anderer = alleC.find((c) => c !== imp1);
@@ -283,6 +303,31 @@ A.send({ t: "again" });
 await bis(() => A.room.phase === "lobby", "zurück im Warteraum");
 if (A.room.players.some((p) => p.punkte !== 0)) throw new Error("Punkte nicht zurückgesetzt");
 console.log("ok  Nochmal setzt alles zurück");
+
+// --- Hilfswort aus: der Imposter bekommt gar nichts -------------------------
+
+A.send({ t: "settings", hilfswort: false });
+await bis(() => A.room.settings.hilfswort === false, "Hilfswort abgeschaltet");
+for (const c of [B, C, D, E]) c.send({ t: "ready", value: true });
+await bis(() => A.room.players.every((p) => p.ready || p.host), "wieder alle bereit");
+A.send({ t: "start" });
+await bis(() => A.runde && A.room.phase === "playing", "Runde mit Hilfswort aus");
+
+{
+  const imp = alleC.find((c) => c.runde.binImposter);
+  if (imp.runde.hilfswort !== null) {
+    throw new Error(`Hilfswort ist aus, der Imposter bekommt trotzdem „${imp.runde.hilfswort}"`);
+  }
+  if (imp.runde.begriffe) throw new Error("Hilfswort aus, aber die Liste kommt trotzdem");
+  if (!imp.runde.gruppe) throw new Error("Der Imposter kennt nicht einmal die Gruppe");
+  // Die Gruppe merkt vom Schalter nichts.
+  for (const c of alleC.filter((c) => c !== imp)) {
+    if (!c.runde.begriffe?.includes(c.runde.begriff)) {
+      throw new Error(`${c.name} sieht seine Wortliste nicht mehr`);
+    }
+  }
+  console.log("ok  Hilfswort aus → nur die Gruppe, kein Wort, keine Liste für den Imposter");
+}
 
 if (alleC.some((c) => c.fehler.length)) {
   throw new Error("Fehlermeldungen: " + JSON.stringify(alleC.map((c) => c.fehler)));

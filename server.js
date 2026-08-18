@@ -37,6 +37,13 @@ const SEAT_GRACE_MS = 60_000;
 const RUNDEN_OPTIONEN = [5, 8, 12, 0]; // 0 = ohne festes Ende
 const HINWEIS_OPTIONEN = [1, 2];       // wie oft jeder drankommt
 
+// Das Hilfswort ist die Kruecke des Imposters: **ein** Wort aus derselben
+// Gruppe, nie das gesuchte. Ohne es weiss er nur, worum es ungefaehr geht –
+// das ist die harte Fassung. Abschaltbar in der Lobby, weil beides Spass
+// macht, aber nicht derselbe: mit Hilfswort hat er einen Faden, an dem er
+// sich entlanghangeln kann, ohne muss er allein aus den Hinweisen bauen.
+const HILFSWORT_STANDARD = true;
+
 // Punkte. Bewusst so, dass ein erwischter Imposter mit einem guten Rateschluss
 // nicht genauso gut dasteht wie einer, der gar nicht erst aufgefallen ist.
 const PUNKTE_IMPOSTER_ENTKOMMEN = 2;
@@ -99,7 +106,7 @@ function createRoom(isPublic) {
     phase: "lobby",
     hostId: null,
     players: new Map(),
-    settings: { rounds: 8, hinweise: 1 },
+    settings: { rounds: 8, hinweise: 1, hilfswort: HILFSWORT_STANDARD },
     letzteGruppe: null,
     letzterImposter: null,
     rundeNr: 0,
@@ -264,6 +271,14 @@ function naechsteRunde(room) {
   const { gruppe, begriffe, begriff } = zieheBegriff(room.letzteGruppe);
   room.letzteGruppe = gruppe;
 
+  // Einmal pro Runde gezogen und gemerkt, nicht bei jedem `pushRunde` neu:
+  // sonst stuende bei jedem Zustandswechsel ein anderes Hilfswort auf der
+  // Karte, und der Imposter haette nach drei Hinweisen die halbe Gruppe.
+  const andere = begriffe.filter((w) => w !== begriff);
+  const hilfswort = andere.length
+    ? andere[Math.floor(Math.random() * andere.length)]
+    : null;
+
   // Nicht zweimal hintereinander dieselbe Person – sonst hoert die Runde auf,
   // ueberhaupt zu verdaechtigen, sobald es einmal jemanden erwischt hat.
   const kandidaten = da.length > 1
@@ -278,6 +293,7 @@ function naechsteRunde(room) {
     gruppe,
     begriffe,
     begriff,
+    hilfswort,
     imposterId: imposter.id,
     // Jede Runde neu gemischt: waere es die Sitzordnung, saesse der Imposter
     // auf Dauer immer an derselben Stelle in der Reihe.
@@ -324,11 +340,14 @@ function pushRunde(room) {
       n: room.rundeNr,
       total: room.settings.rounds,
       gruppe: cur.gruppe,
-      // Die Wortliste sehen alle, auch der Imposter. Ohne sie koennte er nach
-      // einem Satz nichts mehr sagen – und am Ende nicht sinnvoll raten.
-      begriffe: cur.begriffe,
+      // Die Wortliste sehen alle **ausser** dem Imposter. Er bekommt sie erst,
+      // wenn er erwischt ist und raten darf – vorher waere das Raten geschenkt.
+      begriffe: (!binImposter || cur.schritt === "raten") ? cur.begriffe : null,
       // Der Begriff selbst: nur an die Gruppe.
       begriff: binImposter ? null : cur.begriff,
+      // Und das Hilfswort: nur an den Imposter, und nur wenn die Lobby es
+      // angeschaltet hat.
+      hilfswort: binImposter && room.settings.hilfswort ? cur.hilfswort : null,
       binImposter,
       schritt: cur.schritt,
       gesehen: cur.gesehen.size,
@@ -626,6 +645,7 @@ function handle(ws, msg) {
       if (player.id !== room.hostId || room.phase !== "lobby") break;
       if (RUNDEN_OPTIONEN.includes(msg.rounds)) room.settings.rounds = msg.rounds;
       if (HINWEIS_OPTIONEN.includes(msg.hinweise)) room.settings.hinweise = msg.hinweise;
+      if (typeof msg.hilfswort === "boolean") room.settings.hilfswort = msg.hilfswort;
       if (typeof msg.isPublic === "boolean") room.isPublic = msg.isPublic;
       pushState(room);
       pushRoomList();

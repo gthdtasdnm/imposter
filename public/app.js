@@ -349,6 +349,9 @@ function renderRoom() {
   for (const b of document.querySelectorAll("[data-hinweise]")) {
     b.classList.toggle("sel", Number(b.dataset.hinweise) === r.settings.hinweise);
   }
+  for (const b of document.querySelectorAll("[data-hilfswort]")) {
+    b.classList.toggle("sel", (b.dataset.hilfswort === "an") === !!r.settings.hilfswort);
+  }
   for (const b of document.querySelectorAll("[data-rounds]")) {
     b.classList.toggle("sel", Number(b.dataset.rounds) === r.settings.rounds);
   }
@@ -386,6 +389,11 @@ for (const b of document.querySelectorAll("[data-raus]")) {
 
 for (const b of document.querySelectorAll("[data-hinweise]")) {
   b.addEventListener("click", () => send({ t: "settings", hinweise: Number(b.dataset.hinweise) }));
+}
+for (const b of document.querySelectorAll("[data-hilfswort]")) {
+  b.addEventListener("click", () =>
+    send({ t: "settings", hilfswort: b.dataset.hilfswort === "an" })
+  );
 }
 for (const b of document.querySelectorAll("[data-rounds]")) {
   b.addEventListener("click", () => send({ t: "settings", rounds: Number(b.dataset.rounds) }));
@@ -444,20 +452,32 @@ function renderRunde() {
   karte.hidden = r.schritt === "aufloesung";
   karte.classList.toggle("imposter", !!r.binImposter);
   if (!karte.hidden) {
+    const hilf = $("karteHilf");
     if (r.binImposter) {
       $("karteKopf").textContent = "Du bist der Imposter";
       $("karteWort").textContent = "🕵️";
       $("karteSub").textContent =
         `Du kennst das Wort nicht – nur die Gruppe „${r.gruppe}“. Hör zu und häng dich an.`;
+      // Das Hilfswort steht in einer eigenen Zeile und nicht im großen Feld:
+      // dort steht sonst das gesuchte Wort, und wer nur kurz hinsieht, würde
+      // es dafür halten.
+      hilf.hidden = !r.hilfswort;
+      hilf.textContent = r.hilfswort
+        ? `Hilfswort: „${r.hilfswort}“ – aus derselben Gruppe, aber nicht das gesuchte.`
+        : "";
     } else {
       $("karteKopf").textContent = "Dein Wort";
       $("karteWort").textContent = r.begriff ?? "";
       $("karteSub").textContent = "Einer am Tisch kennt es nicht. Verrate es nicht zu früh.";
+      hilf.hidden = true;
+      hilf.textContent = "";
     }
   }
 
   // --- Wortliste -----------------------------------------------------------
-  liste.hidden = r.schritt === "aufloesung";
+  // Der Imposter bekommt sie vom Server gar nicht erst geschickt – außer beim
+  // Raten, da braucht er sie.
+  liste.hidden = r.schritt === "aufloesung" || !(r.begriffe?.length);
   $("listeKopf").textContent = `Mögliche Wörter · ${r.gruppe ?? ""}`;
   const woerter = $("listeWoerter");
   woerter.textContent = "";

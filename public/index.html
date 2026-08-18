@@ -71,6 +71,13 @@
         </div>
       </div>
       <div class="setting">
+        <span class="setting-label">Hilfswort für den Imposter</span>
+        <div class="segmented">
+          <button class="seg" data-hilfswort="an">An</button>
+          <button class="seg" data-hilfswort="aus">Aus</button>
+        </div>
+      </div>
+      <div class="setting">
         <span class="setting-label">Runden</span>
         <div class="segmented">
           <button class="seg" data-rounds="5">5</button>
@@ -116,9 +123,11 @@
         <span class="karte-kopf" id="karteKopf">Dein Wort</span>
         <p class="karte-wort" id="karteWort"></p>
         <p class="karte-sub" id="karteSub"></p>
+        <p class="karte-hilf" id="karteHilf" hidden></p>
       </div>
 
-      <!-- Die Wortliste der Gruppe. Sehen alle, auch der Imposter. -->
+      <!-- Die Wortliste der Gruppe. Der Imposter sieht sie nicht – erst wenn
+           er erwischt ist und raten darf. -->
       <details class="liste" id="liste">
         <summary id="listeKopf">Mögliche Wörter</summary>
         <div class="liste-woerter" id="listeWoerter"></div>

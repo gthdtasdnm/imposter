@@ -47,8 +47,8 @@ Fünf Schritte – mehr als in den anderen Spielen hier:
 3. **Abstimmung.** Alle wählen, wen sie verdächtigen – sich selbst nicht, das
    wäre ein kostenloser Freispruch. Aufgedeckt wird erst, wenn alle gewählt
    haben.
-4. **Raten.** Nur wenn der Imposter erwischt wurde: er darf einmal auf die
-   Wortliste tippen.
+4. **Raten.** Nur wenn der Imposter erwischt wurde: jetzt – und erst jetzt –
+   bekommt er die Wortliste und darf einmal darauf tippen.
 5. **Auflösung.** Wer es war, welches Wort es war, wer für wen gestimmt hat.
 
 ## Punkte
@@ -73,10 +73,21 @@ Sortierung darüber, wer die Runde verliert.
 Server eine Gruppe – nie zweimal dieselbe hintereinander – und daraus einen
 Begriff.
 
-**Die Wortliste sehen alle, auch der Imposter.** Das ist kein Versehen, sondern
-der Kniff: ohne sie könnte er nach einem Satz nichts mehr sagen und wäre sofort
-enttarnt, und am Ende könnte er nicht sinnvoll raten. Mit ihr hat er eine
-Chance.
+**Die Wortliste sieht nur die Gruppe.** Der Imposter bekommt sie erst, wenn er
+erwischt ist und raten darf – vorher wäre sein Rateschluss geschenkt.
+
+Damit er trotzdem etwas hat, woran er sich entlanghangeln kann, gibt es das
+**Hilfswort**: ein einzelnes Wort aus derselben Gruppe, nie das gesuchte. Der
+Host schaltet es in der Lobby an oder aus (Voreinstellung: an).
+
+| Hilfswort | Was der Imposter sieht |
+|---|---|
+| **an** | Gruppe + ein Wort daraus, z. B. „Werkzeug" + „Bohrmaschine" |
+| **aus** | nur die Gruppe |
+
+Gezogen wird das Hilfswort **einmal pro Runde** und gemerkt. Würde es bei jedem
+Zustandswechsel neu gewürfelt, hätte der Imposter nach drei Hinweisen die halbe
+Gruppe gesehen.
 
 Jede Gruppe braucht **mindestens acht** Begriffe, sonst wäre das Raten am Ende
 kein Raten mehr. `probe.js` prüft das, prüft auf Doppelte innerhalb einer
@@ -92,8 +103,8 @@ braucht.
 ## Warum das Wort beim Server bleibt
 
 Das ganze Spiel hängt daran, dass der Imposter den Begriff nicht kennt. Deshalb
-verlässt er den Server nur an die Gruppe; an den Imposter geht `begriff: null`
-und `binImposter: true`. Ein Blick in die Entwicklerwerkzeuge bringt ihm
+verlässt er den Server nur an die Gruppe; an den Imposter geht `begriff: null`,
+`begriffe: null` und `binImposter: true`. Ein Blick in die Entwicklerwerkzeuge bringt ihm
 nichts – dort ist das Wort nie angekommen.
 
 `probe.js` prüft genau das mit fünf echten Verbindungen: nach dem Austeilen muss

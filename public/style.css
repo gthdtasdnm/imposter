@@ -416,6 +416,20 @@ button, input { font: inherit; color: inherit; }
   text-wrap: balance;
 }
 .karte-sub { margin-top: 8px; font-size: .82rem; color: var(--muted); text-wrap: pretty; }
+/* Das Hilfswort ist die einzige Kruecke des Imposters – es darf nicht wie
+   Kleingedrucktes unter der Karte aussehen, aber auch nicht mit dem grossen
+   Wortfeld darueber konkurrieren. Deshalb abgesetzt statt groesser. */
+.karte-hilf {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 46, 136, .35);
+  border-radius: 12px;
+  background: rgba(255, 46, 136, .1);
+  font-size: .88rem;
+  color: var(--ink);
+  text-wrap: pretty;
+}
+.karte-hilf[hidden] { display: none; }
 
 /* --- Die Wortliste ------------------------------------------------------- */
 /* Zusammengeklappt, weil sie zwölf Einträge hat und sonst die Karte aus dem
