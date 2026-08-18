@@ -1,9 +1,12 @@
 # Imposter 🕵️
 
-Alle bekommen dasselbe Wort – bis auf einen. Der weiß nur, um welche **Gruppe**
-es geht: „Werkzeug", aber nicht, ob Hammer oder Säge. Reihum sagt jeder ein
-Hinweiswort, dann wird abgestimmt. Wer zu deutlich wird, verrät das Wort; wer
-zu vage bleibt, wird selbst verdächtigt.
+Alle bekommen dasselbe Wort – bis auf einen. Reihum sagt jeder laut ein Wort
+dazu; wer zu deutlich wird, verrät das Wort, wer zu vage bleibt, wird selbst
+verdächtigt. Am Ende zeigt ihr aufeinander.
+
+**Das Handy teilt nur Karten aus.** Es gibt keine Reihenfolge, keine
+Hinweisschritte, keine Abstimmung und keine Punkte – all das macht der Tisch
+unter sich aus. Der Bildschirm zeigt ein Wort und sonst nichts.
 
 Läuft auf **Deno**, ohne eine einzige externe Abhängigkeit. Kein Build-Schritt,
 kein `node_modules`, ein Prozess.
@@ -16,7 +19,7 @@ kein `node_modules`, ein Prozess.
 deno task dev          # http://localhost:8073/
 PORT=9000 deno task dev
 deno task check        # Typprüfung
-deno task probe        # spielt zwei Runden mit fünf Clients durch
+deno task probe        # teilt mit fünf Clients aus und prüft die Geheimhaltung
 ```
 
 Zum Ausprobieren allein: die Seite in **mehreren Browserfenstern** öffnen. Jedes
@@ -29,43 +32,48 @@ Wie bei den anderen Spielen: Name eintippen, **Raum eröffnen** oder über die
 Liste bzw. den vierstelligen **Code** beitreten. Der geteilte Link mit `#CODE`
 führt direkt hinein.
 
-**Vier bis zehn** Leute. Vier ist die untere Grenze, nicht drei: zu dritt hat
-der Imposter nur zwei Hinweise zum Anlehnen, und die Abstimmung ist ein
-Münzwurf zwischen zwei Verdächtigen.
+**Drei bis zehn** Leute, jeder mit eigenem Gerät, alle am selben Tisch. Drei
+reicht, seit die Abstimmung nicht mehr auf dem Handy läuft – wie viele daran
+Spaß haben, weiß der Tisch besser als der Server.
+
+Es gibt **kein „Bereit"**. Wer im Raum ist, ist dabei; der Host sieht ja, ob
+alle das Handy vor sich haben, er sitzt daneben.
 
 ## Eine Runde
 
-Fünf Schritte – mehr als in den anderen Spielen hier:
+1. **Der Host tippt auf „Austeilen".** Sofort hat jeder seine Karte – nichts zu
+   bestätigen, kein Warten auf den Letzten.
+2. **Ihr redet.** Reihum ein Wort, wer anfängt und wie herum es geht, macht ihr
+   selbst aus. Das Handy sagt niemandem, dass er dran ist.
+3. **Ihr zeigt aufeinander.** Laut, gleichzeitig, wie ihr wollt.
+4. **Der Host tippt auf „Auflösen".** Alle sehen, wer der Imposter war und wie
+   das Wort hieß. Dann „Nächste Runde".
 
-1. **Karten ansehen.** Jeder sieht sein Wort, der Imposter stattdessen, dass er
-   es ist. Erst wenn **alle** auf „Hab ich" gedrückt haben, geht es weiter –
-   sonst redet jemand los, während ein anderer noch nicht weiß, wer er ist.
-2. **Hinweise.** Reihum sagt jeder laut ein Wort zu seinem Begriff. Die
-   Reihenfolge wird jede Runde neu gemischt; wäre sie die Sitzordnung, säße der
-   Imposter auf Dauer immer an derselben Stelle. Der Host stellt ein, ob jeder
-   **einmal oder zweimal** drankommt, und kann die Runde abkürzen.
-3. **Abstimmung.** Alle wählen, wen sie verdächtigen – sich selbst nicht, das
-   wäre ein kostenloser Freispruch. Aufgedeckt wird erst, wenn alle gewählt
-   haben.
-4. **Raten.** Nur wenn der Imposter erwischt wurde: jetzt – und erst jetzt –
-   bekommt er die Wortliste und darf einmal darauf tippen.
-5. **Auflösung.** Wer es war, welches Wort es war, wer für wen gestimmt hat.
+Mehr Knöpfe gibt es nicht, und alle vier gehören dem Host. Jeder Knopf, auf den
+die Runde warten muss, hält eine Runde auf, die längst weiterredet.
 
-## Punkte
+Wer **mitten in einer laufenden Runde** dazukommt, bekommt kein Wort mehr,
+sondern wartet auf das nächste Austeilen – sonst hätte der Tisch unbemerkt einen
+zweiten Mitwisser.
 
-| Ausgang | Punkte |
+## Was der Imposter sieht
+
+Nur, dass er es ist. Kein Wort, keine Gruppe, keine Wortliste.
+
+Damit er nicht völlig blank dasteht, gibt es das **Hilfswort**: ein einzelnes
+Wort aus derselben Gruppe, nie das gesuchte. Der Host schaltet es in der Lobby
+an oder aus (Voreinstellung: an).
+
+| Hilfswort | Was der Imposter sieht |
 |---|---|
-| Imposter kommt durch | **2** für ihn |
-| Imposter erwischt, rät das Wort richtig | **1** für ihn |
-| Imposter erwischt, rät daneben | **1** für **jeden anderen** |
+| **an** | „Du bist der Imposter" + ein Wort aus der Gruppe, z. B. „Bohrmaschine" |
+| **aus** | „Du bist der Imposter". Sonst nichts |
 
-Ein erwischter Imposter mit gutem Rateschluss soll nicht genauso gut dastehen
-wie einer, der gar nicht erst aufgefallen ist – deshalb 1 statt 2.
-
-**Gleichstand zählt als „nicht geeinigt".** Erwischt ist der Imposter nur, wenn
-er **allein** oben steht. Das ist eine bewusste Regel und keine Nachlässigkeit:
-sonst entschiede bei zwei gleichauf liegenden Verdächtigen der Zufall der
-Sortierung darüber, wer die Runde verliert.
+Gezogen wird das Hilfswort **einmal pro Runde** und gemerkt. Würde es bei jedem
+Senden neu gewürfelt, hätte der Imposter nach ein paar Zustandswechseln die
+halbe Gruppe gesehen – und die gibt es ja gerade nicht zu sehen. `probe.js`
+prüft das, indem sie jemanden umbenennt und schaut, ob dasselbe Wort stehen
+bleibt.
 
 ## Die Begriffe
 
@@ -73,27 +81,9 @@ Sortierung darüber, wer die Runde verliert.
 Server eine Gruppe – nie zweimal dieselbe hintereinander – und daraus einen
 Begriff.
 
-**Die Wortliste sieht nur die Gruppe.** Der Imposter bekommt sie erst, wenn er
-erwischt ist und raten darf – vorher wäre sein Rateschluss geschenkt.
-
-Damit er trotzdem etwas hat, woran er sich entlanghangeln kann, gibt es das
-**Hilfswort**: ein einzelnes Wort aus derselben Gruppe, nie das gesuchte. Der
-Host schaltet es in der Lobby an oder aus (Voreinstellung: an).
-
-| Hilfswort | Was der Imposter sieht |
-|---|---|
-| **an** | Gruppe + ein Wort daraus, z. B. „Werkzeug" + „Bohrmaschine" |
-| **aus** | nur die Gruppe |
-
-Gezogen wird das Hilfswort **einmal pro Runde** und gemerkt. Würde es bei jedem
-Zustandswechsel neu gewürfelt, hätte der Imposter nach drei Hinweisen die halbe
-Gruppe gesehen.
-
-Jede Gruppe braucht **mindestens acht** Begriffe, sonst wäre das Raten am Ende
-kein Raten mehr. `probe.js` prüft das, prüft auf Doppelte innerhalb einer
-Gruppe – und darauf, dass **kein Begriff in zwei Gruppen** vorkommt. Der letzte
-Punkt ist ein verstecktes Leck: käme „Säge" in zwei Gruppen vor, sähe der
-Imposter unter Umständen eine Liste, die nicht eindeutig zu seiner Gruppe passt.
+Jede Gruppe braucht **mindestens acht** Begriffe: bei vier wäre das Hilfswort
+fast schon die Antwort. `probe.js` prüft das, prüft auf Doppelte innerhalb einer
+Gruppe – und darauf, dass **kein Begriff in zwei Gruppen** vorkommt.
 
 Alle Begriffe sind gewöhnliche Gattungsbegriffe: keine Marken, keine Werktitel,
 keine Eigennamen. Regeln sind frei, fremde Wortlisten nicht – und ein
@@ -103,20 +93,19 @@ braucht.
 ## Warum das Wort beim Server bleibt
 
 Das ganze Spiel hängt daran, dass der Imposter den Begriff nicht kennt. Deshalb
-verlässt er den Server nur an die Gruppe; an den Imposter geht `begriff: null`,
-`begriffe: null` und `binImposter: true`. Ein Blick in die Entwicklerwerkzeuge bringt ihm
-nichts – dort ist das Wort nie angekommen.
+verlässt er den Server nur an die Gruppe; an den Imposter geht `begriff: null`
+und `binImposter: true`, und `ergebnis` bleibt `null`, bis aufgelöst wurde. Ein
+Blick in die Entwicklerwerkzeuge bringt ihm nichts – dort ist das Wort nie
+angekommen.
 
 `probe.js` prüft genau das mit fünf echten Verbindungen: nach dem Austeilen muss
-**genau ein** Client `binImposter` haben, und genau dieser eine darf `begriff`
-**nicht** kennen.
+**genau ein** Client `binImposter` haben, genau dieser darf `begriff` nicht
+kennen, und sein Hilfswort darf nie das gesuchte Wort sein.
 
 ## Ein Imposter, nicht zwei
 
 Bewusst genau einer, auch zu zehnt. Zwei Imposter, die sich nicht kennen, sind
-ein anderes Spiel: die Abstimmung müsste mehrere Treffer zulassen, und die
-Punktetabelle bekäme vier statt drei Ausgänge. Das wäre nachrüstbar, ist aber
-kein Detail.
+ein anderes Spiel.
 
 Wer zweimal hintereinander Imposter wäre, würde nicht mehr verdächtigt –
 deshalb schließt der Server die Person der Vorrunde aus.
@@ -127,27 +116,23 @@ Der Unterschied zwischen **Verbindungsabriss** und **wirklich weggehen** ist
 hier wichtiger als in den anderen Spielen. Auf dem Handy stirbt der Socket
 schon, wenn man kurz die Nachrichten-App aufmacht.
 
-- **Verbindung weg:** die Runde läuft weiter. Alle Wartebedingungen zählen
-  ohnehin nur Verbundene, und die Hinweisreihe überspringt Abwesende.
-- **Der Imposter geht endgültig:** die Runde hat kein Ziel mehr. Sie wird
-  **nicht gewertet** und neu ausgegeben.
-- **Der Imposter hängt beim Raten:** der Host kann abbrechen, das zählt als
-  danebengeraten. Ohne diesen Ausgang stünde die Runde bis zum Ablauf der
-  Karenzzeit.
-- Punkte für die Gruppe gehen auch an den, dessen Verbindung im letzten Moment
-  hängt. Er hat die Runde mitgespielt; der Socket ist kein Spielzustand.
+- **Verbindung weg:** nichts passiert. Die Runde wartet auf niemanden, also
+  kann sie auch von niemandem aufgehalten werden. Wer zurückkommt, bekommt
+  seine Karte erneut geschickt – dieselbe.
+- **Der Imposter geht endgültig:** die Runde hat kein Ziel mehr und wird neu
+  ausgeteilt.
 
 ## Dateien
 
 | Datei | Was |
 |---|---|
-| `server.js` | statische Dateien, WebSocket, Räume, die fünf Rundenschritte |
+| `server.js` | statische Dateien, WebSocket, Räume, Kartenausgabe |
 | `begriffe.js` | die zwölf Begriffsgruppen |
 | `bremse.js` | gemeinsames Rate-Limiting, **wortgleich in allen Spielen** |
-| `probe.js` | spielt zwei Runden mit fünf Clients durch und prüft die Geheimhaltung |
-| `public/index.html` | alle vier Bildschirme plus die Hilfe |
+| `probe.js` | teilt mit fünf Clients aus und prüft die Geheimhaltung |
+| `public/index.html` | drei Bildschirme plus die Hilfe |
 | `public/style.css` | oben der gemeinsame Lobby-Block, darunter das Eigene |
-| `public/app.js` | Verbindung, Warteraum, Rollenkarte, Hinweise, Abstimmung, Raten |
+| `public/app.js` | Verbindung, Warteraum, Karte, Auflösung |
 
 `bremse.js` und der CSS-Block bis `══ Gemeinsame Lobby-Basis ══ Ende ══` sind in
 allen Spielen identisch und werden **von Hand** synchron gehalten. Wer dort

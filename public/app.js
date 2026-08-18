@@ -1,5 +1,6 @@
-// Client: Verbindung, Warteraum, Rollenkarte, Hinweisrunde, Abstimmung,
-// Raten, Auflösung.
+// Client: Verbindung, Warteraum, Karte, Auflösung. Mehr gibt es nicht – der
+// Spielbildschirm zeigt ein Wort und sonst nichts, und nur der Host hat
+// überhaupt einen Knopf.
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,7 +14,7 @@ const state = {
   you: null,
   code: null,
   room: null,
-  runde: null,
+  karte: null,
   pendingIntent: null,
   visibility: "public",
 };
@@ -181,17 +182,13 @@ function onMessage(msg) {
 
     case "room":
       state.room = msg;
-      if (msg.phase !== "playing") state.runde = null;
+      if (msg.phase !== "runde") state.karte = null;
       renderRoom();
       break;
 
-    case "runde":
-      state.runde = msg;
-      renderRunde();
-      break;
-
-    case "final":
-      renderFinal(msg);
+    case "karte":
+      state.karte = msg;
+      renderKarte();
       break;
 
     case "error":
@@ -248,7 +245,7 @@ function verlassen() {
   send({ t: "leave" });
   saveSession(null);
   state.room = null;
-  state.runde = null;
+  state.karte = null;
   state.you = null;
   location.hash = "";
   show("home");
@@ -303,10 +300,9 @@ function renderRoom() {
   const r = state.room;
   if (!r) return;
 
-  if (r.phase === "final") return; // das Endbild steht schon
-  if (r.phase === "playing") {
-    renderPunktleiste();
-    return;                        // den Spielbildschirm zeichnet renderRunde()
+  if (r.phase === "runde") {
+    renderKarte();   // den Spielbildschirm zeichnet die Karte
+    return;
   }
 
   show("lobby");
@@ -324,8 +320,7 @@ function renderRoom() {
   for (let i = 0; i < Math.min(plaetze, r.maxPlayers); i++) {
     const p = r.players[i];
     const card = document.createElement("div");
-    card.className = "seat" + (p ? "" : " empty") +
-      (p?.ready ? " ready" : "") + (p && !p.connected ? " off" : "");
+    card.className = "seat" + (p ? "" : " empty") + (p && !p.connected ? " off" : "");
     if (!p) {
       card.innerHTML =
         `<div class="av">🪑</div><div class="nm">frei</div><div class="st">wartet</div>`;
@@ -333,70 +328,42 @@ function renderRoom() {
       card.innerHTML = `
         <div class="av">${avatarFor(p.id)}</div>
         <div class="nm">${escapeHtml(p.name)}${p.id === state.you ? " (du)" : ""}</div>
-        <div class="st">${
-        !p.connected ? "weg" : p.host ? "startet" : p.ready ? "✓ bereit" : "wartet"
-      }</div>
+        <div class="st">${!p.connected ? "weg" : p.host ? "teilt aus" : "dabei"}</div>
         ${p.host ? '<div class="host">HOST</div>' : ""}`;
     }
     list.append(card);
   }
 
   const isHost = r.hostId === state.you;
-  const me = r.players.find((p) => p.id === state.you);
   $("hostControls").hidden = !isHost;
   $("guestControls").hidden = isHost;
 
-  for (const b of document.querySelectorAll("[data-hinweise]")) {
-    b.classList.toggle("sel", Number(b.dataset.hinweise) === r.settings.hinweise);
-  }
   for (const b of document.querySelectorAll("[data-hilfswort]")) {
     b.classList.toggle("sel", (b.dataset.hilfswort === "an") === !!r.settings.hilfswort);
-  }
-  for (const b of document.querySelectorAll("[data-rounds]")) {
-    b.classList.toggle("sel", Number(b.dataset.rounds) === r.settings.rounds);
   }
   for (const b of document.querySelectorAll("[data-lobbyvis]")) {
     b.classList.toggle("sel", (b.dataset.lobbyvis === "public") === r.isPublic);
   }
 
   // Wer gerade weg ist, zählt nicht mit – sonst blockiert er den Start.
-  const here = r.players.filter((p) => p.connected);
-  const others = here.filter((p) => p.id !== r.hostId);
-  const allReady = others.every((p) => p.ready);
-  $("startBtn").disabled = here.length < r.minPlayers || !allReady;
-  $("startHint").textContent = here.length < r.minPlayers
-    ? `Ab ${r.minPlayers} geht es los – darunter ist die Abstimmung ein Münzwurf.`
-    : allReady
-    ? "Alle bereit!"
-    : "Warten auf die anderen …";
-
-  $("readyBtn").textContent = me?.ready ? "Doch nicht bereit" : "Bereit!";
-  $("readyBtn").classList.toggle("on", !!me?.ready);
+  const here = r.players.filter((p) => p.connected).length;
+  $("startBtn").disabled = here < r.minPlayers;
+  $("startHint").textContent = here < r.minPlayers
+    ? `Ab ${r.minPlayers} geht es los.`
+    : "Wenn alle das Handy vor sich haben: austeilen.";
 }
-
-$("readyBtn").addEventListener("click", () => {
-  const me = state.room?.players.find((p) => p.id === state.you);
-  send({ t: "ready", value: !me?.ready });
-});
 
 $("startBtn").addEventListener("click", () => send({ t: "start" }));
 $("leaveBtn").addEventListener("click", verlassen);
-// Derselbe Weg hinaus von ueberall: Lobby, Spielbildschirm, Endstand.
+// Derselbe Weg hinaus von ueberall: Lobby und Spielbildschirm.
 for (const b of document.querySelectorAll("[data-raus]")) {
   b.addEventListener("click", verlassen);
 }
 
-
-for (const b of document.querySelectorAll("[data-hinweise]")) {
-  b.addEventListener("click", () => send({ t: "settings", hinweise: Number(b.dataset.hinweise) }));
-}
 for (const b of document.querySelectorAll("[data-hilfswort]")) {
   b.addEventListener("click", () =>
     send({ t: "settings", hilfswort: b.dataset.hilfswort === "an" })
   );
-}
-for (const b of document.querySelectorAll("[data-rounds]")) {
-  b.addEventListener("click", () => send({ t: "settings", rounds: Number(b.dataset.rounds) }));
 }
 for (const b of document.querySelectorAll("[data-lobbyvis]")) {
   b.addEventListener("click", () =>
@@ -427,274 +394,74 @@ function knopf(label, cls, fn) {
   return b;
 }
 
-function renderRunde() {
-  const r = state.runde;
-  if (!r || state.room?.phase !== "playing") return;
+/**
+ * Die Karte. Sie hat drei Zustände und keinen davon muss jemand wegklicken:
+ * das eigene Wort, „du bist der Imposter", und nach dem Auflösen die Wahrheit.
+ * Wer mitten in einer laufenden Runde dazukommt, wartet auf die nächste.
+ */
+function renderKarte() {
+  const k = state.karte;
+  if (!k || state.room?.phase !== "runde") return;
   show("game");
 
   const isHost = state.room.hostId === state.you;
-  const binDran = r.dranId === state.you;
-
-  $("rundeNo").textContent = String(r.n);
-  $("rundeTotal").textContent = r.total ? ` / ${r.total}` : "";
-  $("gruppeTag").textContent = r.gruppe ?? "";
+  $("rundeNo").textContent = String(k.n);
   $("endeBtn").hidden = !isHost;
 
   const karte = $("karte");
-  const liste = $("liste");
-  const reihe = $("reihenListe");
-  const gitter = $("wahlGitter");
+  const hilf = $("karteHilf");
   const auf = $("aufloesung");
+  karte.hidden = false;
+  auf.hidden = true;
+  hilf.hidden = true;
 
-  // --- Rollenkarte ---------------------------------------------------------
-  // Sie bleibt bis zur Auflösung stehen: wer sein Wort vergisst, während er
-  // auf seinen Hinweis wartet, hat sonst verloren.
-  karte.hidden = r.schritt === "aufloesung";
-  karte.classList.toggle("imposter", !!r.binImposter);
-  if (!karte.hidden) {
-    const hilf = $("karteHilf");
-    if (r.binImposter) {
-      $("karteKopf").textContent = "Du bist der Imposter";
-      $("karteWort").textContent = "🕵️";
-      $("karteSub").textContent =
-        `Du kennst das Wort nicht – nur die Gruppe „${r.gruppe}“. Hör zu und häng dich an.`;
-      // Das Hilfswort steht in einer eigenen Zeile und nicht im großen Feld:
-      // dort steht sonst das gesuchte Wort, und wer nur kurz hinsieht, würde
-      // es dafür halten.
-      hilf.hidden = !r.hilfswort;
-      hilf.textContent = r.hilfswort
-        ? `Hilfswort: „${r.hilfswort}“ – aus derselben Gruppe, aber nicht das gesuchte.`
-        : "";
-    } else {
-      $("karteKopf").textContent = "Dein Wort";
-      $("karteWort").textContent = r.begriff ?? "";
-      $("karteSub").textContent = "Einer am Tisch kennt es nicht. Verrate es nicht zu früh.";
-      hilf.hidden = true;
-      hilf.textContent = "";
-    }
+  if (k.aufgedeckt) {
+    const e = k.ergebnis;
+    karte.classList.toggle("imposter", e.imposterId === state.you);
+    $("karteKopf").textContent = "Das Wort war";
+    $("karteWort").textContent = e.begriff;
+    auf.hidden = false;
+    auf.innerHTML = `<span class="auf-av">${avatarFor(e.imposterId)}</span>
+      <p class="auf-wer"><b>${escapeHtml(e.imposterName)}</b> war der Imposter.</p>
+      <p class="auf-klein">Gruppe: ${escapeHtml(e.gruppe)}</p>`;
+  } else if (!k.dabei) {
+    // Mitten in die laufende Runde gekommen: kein Wort, sonst hätte der Tisch
+    // unbemerkt einen zweiten Mitwisser.
+    karte.classList.remove("imposter");
+    $("karteKopf").textContent = "Du bist im Raum";
+    $("karteWort").textContent = "⏳";
+    hilf.hidden = false;
+    hilf.textContent = "Diese Runde läuft schon. Beim nächsten Austeilen bist du dabei.";
+  } else if (k.binImposter) {
+    karte.classList.add("imposter");
+    $("karteKopf").textContent = "Du bist der Imposter";
+    $("karteWort").textContent = "🕵️";
+    hilf.hidden = !k.hilfswort;
+    hilf.textContent = k.hilfswort ? `Hilfswort: „${k.hilfswort}“` : "";
+  } else {
+    karte.classList.remove("imposter");
+    $("karteKopf").textContent = "Dein Wort";
+    $("karteWort").textContent = k.begriff ?? "";
   }
 
-  // --- Wortliste -----------------------------------------------------------
-  // Der Imposter bekommt sie vom Server gar nicht erst geschickt – außer beim
-  // Raten, da braucht er sie.
-  liste.hidden = r.schritt === "aufloesung" || !(r.begriffe?.length);
-  $("listeKopf").textContent = `Mögliche Wörter · ${r.gruppe ?? ""}`;
-  const woerter = $("listeWoerter");
-  woerter.textContent = "";
-  for (const w of r.begriffe ?? []) {
-    const s = document.createElement("span");
-    s.className = "wort" + (!r.binImposter && w === r.begriff ? " meins" : "");
-    s.textContent = w;
-    woerter.append(s);
-  }
-
-  // --- Phasen --------------------------------------------------------------
-  reihe.hidden = r.schritt !== "hinweise";
-  gitter.hidden = !(r.schritt === "abstimmen" || (r.schritt === "raten" && r.binImposter));
-  auf.hidden = r.schritt !== "aufloesung";
-
+  // Knöpfe hat nur der Host, und immer nur einen.
   const box = $("aktionen");
   box.textContent = "";
-  let phase = "";
   let hint = "";
-
-  if (r.schritt === "rollen") {
-    phase = `${r.gesehen} von ${r.gesehenGesamt} haben ihre Karte gesehen`;
-    if (!r.habGesehen) {
-      box.append(knopf("Hab ich", "primary big", () => send({ t: "gesehen" })));
-      hint = "Erst wenn alle gedrückt haben, geht es los – sonst redet jemand los, während ein anderer noch nicht weiß, wer er ist.";
+  if (isHost) {
+    if (k.aufgedeckt) {
+      box.append(knopf("Nächste Runde", "primary big", () => send({ t: "neu" })));
     } else {
-      hint = "Warten auf die anderen …";
+      box.append(knopf("Auflösen", "primary big", () => send({ t: "aufloesen" })));
+      hint = "Erst reden. Auflösen zeigt allen, wer es war.";
     }
-  } else if (r.schritt === "hinweise") {
-    phase = `Hinweis ${r.hinweisNr} von ${r.hinweisGesamt}`;
-    reihe.textContent = "";
-    // Wie weit die Reihe im *aktuellen* Durchgang ist. Bei zwei Hinweisen pro
-    // Person fängt die Markierung im zweiten Durchgang wieder vorne an –
-    // sonst wären am Ende alle grau und man sähe nicht mehr, wer noch kommt.
-    const imDurchgang = (r.hinweisNr - 1) % r.reihenfolge.length;
-    r.reihenfolge.forEach((p, idx) => {
-      const li = document.createElement("li");
-      li.className = "reihe-p" + (p.id === r.dranId ? " jetzt" : "") +
-        (idx < imDurchgang ? " fertig" : "") + (p.id === state.you ? " ich" : "");
-      li.innerHTML = `<span class="reihe-av">${avatarFor(p.id)}</span>
-        <span class="reihe-name">${escapeHtml(p.name)}</span>`;
-      reihe.append(li);
-    });
-    if (binDran) {
-      box.append(knopf("Gesagt", "primary big", () => send({ t: "hinweis" })));
-      hint = "Sag laut ein Wort, das zu deinem Begriff passt. Nicht zu deutlich – aber deutlich genug.";
-    } else {
-      hint = `${r.dranName ?? "?"} ist dran.`;
-      if (isHost) box.append(knopf("Weiter", "ghost sm", () => send({ t: "hinweis" })));
-    }
-    if (isHost) {
-      box.append(knopf("Zur Abstimmung", "ghost sm", () => send({ t: "abstimmung" })));
-    }
-  } else if (r.schritt === "abstimmen") {
-    phase = `${r.stimmenAb} von ${r.stimmenGesamt} haben gewählt`;
-    gitter.textContent = "";
-    for (const p of r.reihenfolge) {
-      if (p.id === state.you) continue; // sich selbst zu wählen wäre ein Freispruch
-      const b = document.createElement("button");
-      b.className = "wahl" + (r.meineStimme === p.id ? " gewaehlt" : "");
-      b.innerHTML = `<span class="wahl-av">${avatarFor(p.id)}</span>
-        <span class="wahl-name">${escapeHtml(p.name)}</span>`;
-      b.addEventListener("click", () => send({ t: "stimme", ziel: p.id }));
-      gitter.append(b);
-    }
-    hint = r.meineStimme == null
-      ? "Wer ist es? Aufgedeckt wird erst, wenn alle gewählt haben."
-      : "Gewählt. Umentscheiden geht, solange nicht alle durch sind.";
-    if (isHost) box.append(knopf("Trotzdem auflösen", "ghost sm", () => send({ t: "aufloesen" })));
-  } else if (r.schritt === "raten") {
-    if (r.binImposter) {
-      phase = "Erwischt! Ein Versuch bleibt dir.";
-      gitter.textContent = "";
-      for (const w of r.begriffe ?? []) {
-        const b = document.createElement("button");
-        b.className = "wahl raten";
-        b.textContent = w;
-        b.addEventListener("click", () => send({ t: "raten", begriff: w }));
-        gitter.append(b);
-      }
-      hint = "Triffst du das Wort, rettest du einen Punkt. Sonst bekommt jeder andere einen.";
-    } else {
-      phase = "Erwischt!";
-      hint = "Der Imposter rät jetzt, welches Wort es war.";
-      if (isHost) {
-        box.append(knopf("Abbrechen", "ghost sm", () => send({ t: "ratenAufgeben" })));
-      }
-    }
-  } else if (r.schritt === "aufloesung") {
-    const e = r.ergebnis;
-    phase = "";
-    renderAufloesung(e);
-    if (isHost) {
-      box.append(knopf("Weiter", "primary big", () => send({ t: "weiter" })));
-      hint = r.total && r.n >= r.total ? "Das war die letzte Runde." : "";
-    } else {
-      hint = "Weiter geht’s, sobald der Host drückt.";
-    }
+  } else if (k.aufgedeckt) {
+    hint = "Der Host teilt gleich neu aus.";
   }
-
-  $("phasenText").textContent = phase;
   $("rundenHint").textContent = hint;
-  renderPunktleiste();
-}
-
-function renderAufloesung(e) {
-  const auf = $("aufloesung");
-  auf.textContent = "";
-  if (!e) return;
-
-  const urteil = document.createElement("p");
-  urteil.className = "auf-urteil " + (e.erkannt ? "gefasst" : "entkommen");
-  urteil.textContent = e.erkannt ? "Erwischt!" : "Durchgekommen.";
-  auf.append(urteil);
-
-  const wer = document.createElement("p");
-  wer.className = "auf-wer";
-  wer.innerHTML = `Der Imposter war <b>${escapeHtml(e.imposterName)}</b>${
-    e.imposterId === state.you ? " – also du" : ""
-  }. Das Wort war <b>${escapeHtml(e.begriff ?? "?")}</b>.`;
-  auf.append(wer);
-
-  if (!e.erkannt && e.verdaechtigtName) {
-    const falsch = document.createElement("p");
-    falsch.className = "auf-klein";
-    falsch.textContent = `Verdächtigt wurde ${e.verdaechtigtName}.`;
-    auf.append(falsch);
-  } else if (!e.erkannt && !e.verdaechtigtId) {
-    const patt = document.createElement("p");
-    patt.className = "auf-klein";
-    patt.textContent = "Gleichstand – die Runde konnte sich nicht einigen.";
-    auf.append(patt);
-  }
-
-  if (e.erkannt) {
-    const raten = document.createElement("p");
-    raten.className = "auf-klein";
-    raten.textContent = e.geraten == null
-      ? "Geraten wurde nicht."
-      : e.ratenRichtig
-      ? `Und hat mit „${e.geraten}“ richtig geraten – ein Punkt gerettet.`
-      : `Geraten hat er „${e.geraten}“ – daneben.`;
-    auf.append(raten);
-  }
-
-  const tab = document.createElement("ul");
-  tab.className = "auf-tabelle";
-  for (const z of e.tabelle ?? []) {
-    const li = document.createElement("li");
-    li.className = "auf-zeile" + (z.id === e.imposterId ? " imposter" : "");
-    li.innerHTML = `<span class="auf-av">${avatarFor(z.id)}</span>
-      <span class="auf-name">${escapeHtml(z.name)}${
-      z.id === e.imposterId ? " 🕵️" : ""
-    }<small>${z.waehler.length ? escapeHtml(z.waehler.join(", ")) : "—"}</small></span>
-      <span class="auf-zahl">${z.stimmen}</span>`;
-    tab.append(li);
-  }
-  auf.append(tab);
-}
-
-function renderPunktleiste() {
-  const r = state.room;
-  if (!r) return;
-  const bar = $("punktleiste");
-  bar.textContent = "";
-  const sorted = r.players.slice().sort((a, b) => b.punkte - a.punkte);
-  for (const p of sorted) {
-    const chip = document.createElement("div");
-    chip.className = "chip" + (p.id === state.you ? " me" : "") +
-      (p.connected ? "" : " gone");
-    chip.innerHTML = `
-      <span class="chip-av">${avatarFor(p.id)}</span>
-      <span class="chip-name">${escapeHtml(p.name)}</span>
-      <span class="chip-zahl">${p.punkte}</span>`;
-    bar.append(chip);
-  }
 }
 
 $("endeBtn").addEventListener("click", () => send({ t: "ende" }));
-
-// ---------------------------------------------------------------------------
-// Endstand
-// ---------------------------------------------------------------------------
-
-function renderFinal(msg) {
-  show("final");
-  const t = msg.tabelle;
-  $("finalSub").textContent = `${msg.runden} Runde${msg.runden === 1 ? "" : "n"} gespielt`;
-
-  const ol = $("podium");
-  ol.textContent = "";
-  const maxPunkte = Math.max(...t.map((p) => p.punkte), 0);
-  for (const p of t) {
-    const li = document.createElement("li");
-    li.className = "podest" + (p.id === state.you ? " me" : "") +
-      (maxPunkte > 0 && p.punkte === maxPunkte ? " sieg" : "");
-    const titel = p.entkommen
-      ? `${p.entkommen}× unerkannt durchgekommen`
-      : p.malImposter
-      ? `${p.malImposter}× Imposter, nie durchgekommen`
-      : "nie Imposter gewesen";
-    li.innerHTML = `
-      <span class="podest-av">${avatarFor(p.id)}</span>
-      <span class="podest-name">${escapeHtml(p.name)}
-        <small>${escapeHtml(titel)}</small></span>
-      <span class="podest-zahl">${p.punkte}<small>Punkte</small></span>`;
-    ol.append(li);
-  }
-
-  const isHost = state.room?.hostId === state.you;
-  $("againBtn").hidden = !isHost;
-  $("againHint").textContent = isHost
-    ? "Zurück in den Warteraum – dort könnt ihr die Rundenzahl umstellen."
-    : "Der Host holt alle zurück in den Warteraum.";
-}
-
-$("againBtn").addEventListener("click", () => send({ t: "again" }));
 
 // ---------------------------------------------------------------------------
 // Start

@@ -306,7 +306,7 @@ button, input { font: inherit; color: inherit; }
 #toast { bottom: calc(18px + env(safe-area-inset-bottom)); }
 #status.show, #toast.show { opacity: 1; }
 
-.home, .lobby, .final {
+.home, .lobby {
   max-width: 460px;
   margin: 0 auto;
   padding: 28px 20px 40px;
@@ -352,17 +352,7 @@ button, input { font: inherit; color: inherit; }
 }
 .tb-runde { font-size: .8rem; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 .tb-runde strong { color: var(--ink); font-size: 1.05rem; }
-.tb-runde small { color: var(--dim); }
-/* Die Gruppe steht dauerhaft oben: sie ist die einzige Information, die
-   Imposter und Gruppe teilen, und damit der Bezugspunkt für jeden Hinweis. */
-.tb-gruppe {
-  margin-left: auto;
-  font-size: 11px; padding: 4px 10px; border-radius: 99px;
-  background: rgba(160, 107, 255, .18); color: var(--akzent);
-  border: 1px solid rgba(160, 107, 255, .35);
-  letter-spacing: .06em; white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis; max-width: 50vw;
-}
+.tb-runde { margin-right: auto; }
 /* Der Notausgang für den Host – da soll niemand versehentlich draufkommen. */
 #endeBtn { border-color: transparent; color: var(--muted); font-weight: 600; }
 #endeBtn:hover { color: var(--ink); }
@@ -374,9 +364,6 @@ button, input { font: inherit; color: inherit; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* „safe": die Rateliste hat zwölf Einträge und ist auf einem kurzen Display
-     höher als die Bühne. Ohne safe schöbe das Zentrieren den oberen Rand aus
-     dem Bild, und dorthin käme man auch durch Scrollen nicht zurück. */
   justify-content: safe center;
   gap: 14px;
   padding: 10px 16px;
@@ -409,13 +396,12 @@ button, input { font: inherit; color: inherit; }
 }
 .karte.imposter .karte-kopf { color: var(--hot); }
 .karte-wort {
-  margin-top: 6px;
-  font-size: clamp(1.5rem, 8vw, 2.3rem);
+  margin-top: 10px;
+  font-size: clamp(2rem, 11vw, 3.2rem);
   font-weight: 900;
   line-height: 1.15;
   text-wrap: balance;
 }
-.karte-sub { margin-top: 8px; font-size: .82rem; color: var(--muted); text-wrap: pretty; }
 /* Das Hilfswort ist die einzige Kruecke des Imposters – es darf nicht wie
    Kleingedrucktes unter der Karte aussehen, aber auch nicht mit dem grossen
    Wortfeld darueber konkurrieren. Deshalb abgesetzt statt groesser. */
@@ -431,144 +417,20 @@ button, input { font: inherit; color: inherit; }
 }
 .karte-hilf[hidden] { display: none; }
 
-/* --- Die Wortliste ------------------------------------------------------- */
-/* Zusammengeklappt, weil sie zwölf Einträge hat und sonst die Karte aus dem
-   Bild schöbe. Aufgeklappt bleibt sie es – <details> merkt sich das von
-   selbst, solange nicht neu gezeichnet wird. */
-
-.liste {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: rgba(0, 0, 0, .25);
-  text-align: left;
-}
-.liste[hidden] { display: none; }
-.liste summary {
-  padding: 10px 14px;
-  cursor: pointer;
-  font-size: .8rem; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--muted);
-  list-style: none;
-}
-.liste summary::-webkit-details-marker { display: none; }
-.liste summary::after { content: " ▾"; }
-.liste[open] summary::after { content: " ▴"; }
-.liste-woerter {
-  display: flex; flex-wrap: wrap; gap: 6px;
-  padding: 0 14px 14px;
-}
-.wort {
-  font-size: 12px; padding: 4px 10px; border-radius: 99px;
-  background: rgba(255, 255, 255, .06);
-  border: 1px solid transparent;
-}
-/* Das eigene Wort in der Liste hervorheben – wer es beim Warten vergisst,
-   findet es hier wieder, ohne die Karte aufzuklappen. */
-.wort.meins {
-  background: rgba(160, 107, 255, .2);
-  border-color: var(--akzent);
-  color: var(--ink);
-  font-weight: 800;
-}
-
-.phasen-text {
-  font-size: .85rem; color: var(--dim);
-  font-variant-numeric: tabular-nums;
-}
-
-/* --- Hinweisreihe -------------------------------------------------------- */
-
-.reihe {
-  list-style: none;
-  width: 100%;
-  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-}
-.reihe[hidden] { display: none; }
-.reihe-p {
-  display: flex; align-items: center; gap: 6px;
-  padding: 6px 11px; border-radius: 99px;
-  background: rgba(255, 255, 255, .05);
-  border: 1px solid transparent;
-  font-size: 12px;
-  line-height: 1.4;
-}
-.reihe-p.jetzt {
-  border-color: var(--akzent);
-  background: rgba(160, 107, 255, .18);
-  font-weight: 800;
-}
-.reihe-p.fertig { opacity: .4; }
-.reihe-av { font-size: 14px; }
-.reihe-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 30vw; }
-
-/* --- Abstimmung und Raten ------------------------------------------------ */
-
-.wahl-gitter {
-  width: 100%;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
-}
-.wahl-gitter[hidden] { display: none; }
-
-.wahl {
-  display: flex; align-items: center; gap: 9px;
-  padding: 13px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(0, 0, 0, .28);
-  color: var(--ink);
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: transform .12s, border-color .15s, background .15s;
-}
-.wahl:hover { background: rgba(255, 255, 255, .08); }
-.wahl:active { transform: scale(.97); }
-.wahl.gewaehlt {
-  border-color: var(--akzent);
-  background: rgba(160, 107, 255, .18);
-  box-shadow: 0 0 0 2px rgba(160, 107, 255, .18);
-}
-/* Beim Raten stehen Wörter statt Namen – da passt kein Avatar davor, und
-   zentriert liest es sich besser. */
-.wahl.raten { justify-content: center; text-align: center; font-weight: 700; padding: 12px 10px; }
-.wahl-av { font-size: 22px; line-height: 1; }
-.wahl-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
 /* --- Auflösung ----------------------------------------------------------- */
 
 .aufloesung {
   width: 100%;
-  display: flex; flex-direction: column; gap: 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 14px;
   border: 1px solid var(--line); border-radius: var(--r);
   background: rgba(0, 0, 0, .28);
-  text-align: left;
 }
 .aufloesung[hidden] { display: none; }
-.auf-urteil { font-size: 1.3rem; font-weight: 900; }
-.auf-urteil.gefasst { color: var(--good); }
-.auf-urteil.entkommen { color: var(--hot); }
-.auf-wer { font-size: .95rem; text-wrap: pretty; }
+.auf-av { font-size: 30px; line-height: 1.2; }
+.auf-wer { font-size: 1.05rem; text-wrap: pretty; }
+.auf-wer b { color: var(--hot); }
 .auf-klein { font-size: .82rem; color: var(--muted); text-wrap: pretty; }
-
-.auf-tabelle { list-style: none; display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
-.auf-zeile {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center; gap: 9px;
-  padding: 7px 10px;
-  border: 1px solid var(--line); border-radius: 10px;
-  background: rgba(0, 0, 0, .2);
-}
-.auf-zeile.imposter { border-color: rgba(255, 46, 136, .5); background: rgba(255, 46, 136, .1); }
-.auf-av { font-size: 18px; }
-.auf-name { font-weight: 700; font-size: .9rem; overflow: hidden; }
-.auf-name small { display: block; font-size: 11px; font-weight: 400; color: var(--muted);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.auf-zahl { font-weight: 900; color: var(--akzent); font-variant-numeric: tabular-nums; }
 
 /* --- Fußbereich ---------------------------------------------------------- */
 
@@ -577,47 +439,6 @@ button, input { font: inherit; color: inherit; }
 .aktionen { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
 .aktionen .btn { flex: 1 1 auto; min-width: 130px; }
 .aktionen .btn.sm { flex: 0 0 auto; min-width: 0; }
-
-.punktleiste {
-  display: flex; flex-wrap: wrap; gap: 6px; justify-content: center;
-  margin-top: 12px;
-}
-.chip {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 10px; border-radius: 99px;
-  background: rgba(255, 255, 255, .06);
-  border: 1px solid transparent;
-  font-size: 12px; max-width: 46vw;
-  /* Ohne festes line-height bestimmt die Emoji-Schrift die Zeilenhöhe – und
-     die ist eine Bitmap-Schrift mit riesiger Grundlinie. Die Chips wären
-     dreimal so hoch wie ihr Inhalt. */
-  line-height: 1.4;
-}
-.chip-av { font-size: 14px; }
-.chip-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip-zahl { font-weight: 900; color: var(--akzent); font-variant-numeric: tabular-nums; }
-.chip.me { background: rgba(160, 107, 255, .18); }
-.chip.gone { opacity: .4; }
-
-/* --- Endstand ------------------------------------------------------------ */
-
-.final-title { text-align: center; font-size: 1.6rem; font-weight: 900; }
-.podium { list-style: none; display: flex; flex-direction: column; gap: 8px; }
-.podest {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center; gap: 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--line); border-radius: var(--r);
-  background: var(--panel);
-}
-.podest.me { border-color: var(--akzent); }
-.podest.sieg { border-color: var(--gold); background: rgba(255, 212, 71, .1); }
-.podest-av { font-size: 24px; }
-.podest-name { font-weight: 800; overflow: hidden; }
-.podest-name small { display: block; font-size: 11px; font-weight: 600; color: var(--akzent); }
-.podest-zahl { font-weight: 900; font-size: 1.2rem; color: var(--akzent); text-align: right; }
-.podest-zahl small { display: block; font-size: 10px; color: var(--muted); font-weight: 600; }
 
 /* --- Überlagerung: Hilfe ------------------------------------------------- */
 
@@ -642,5 +463,5 @@ button, input { font: inherit; color: inherit; }
 .help-inner li { font-size: .92rem; line-height: 1.45; text-wrap: pretty; }
 
 @media (prefers-reduced-motion: reduce) {
-  .chip, .karte, .podest, .wahl { transition: none; }
+  .karte { transition: none; }
 }

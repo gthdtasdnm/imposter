@@ -1,10 +1,13 @@
-// IMPOSTER – Deno-Server: statische Dateien + WebSocket + Rundenlogik.
+// IMPOSTER – Deno-Server: statische Dateien + WebSocket + Kartenausgabe.
 // Keine Abhaengigkeiten, kein Build-Schritt. `deno task dev` oder direkt:
 //   deno run --allow-net --allow-read --allow-env --allow-sys server.js
 //
-// Raum, Host, Bereit, Karenzzeit und Bremse sind Zeile fuer Zeile wie in „Ich
-// hab noch nie". Eigen ist alles ab „Spielablauf" – und das ist hier mehr als
-// bei den anderen: eine Runde hat fuenf Schritte statt zwei.
+// Raum, Host, Karenzzeit und Bremse sind Zeile fuer Zeile wie in „Ich hab noch
+// nie". Der Spielteil daneben ist absichtlich winzig: **das Handy teilt nur
+// Karten aus**. Es gibt keine Reihenfolge, keine Hinweisschritte, keine
+// Abstimmung und keine Punkte – gespielt wird am Tisch, das Geraet haelt nur
+// das Wort geheim. Deshalb auch kein „Bereit" und kein „Weiter": jeder Knopf,
+// auf den die Runde warten muss, haelt eine Runde auf, die laengst weiterredet.
 
 import { zieheBegriff } from "./begriffe.js";
 import {
@@ -26,29 +29,18 @@ const PUBLIC = new URL("./public/", import.meta.url);
 // ---------------------------------------------------------------------------
 
 const MAX_PLAYERS = 10;
-// Vier ist die untere Grenze, nicht drei: zu dritt hat der Imposter nur zwei
-// Hinweise zum Anlehnen, und die Abstimmung ist ein Muenzwurf zwischen zwei
-// Verdaechtigen.
-const MIN_PLAYERS = 4;
+// Drei genuegt jetzt. Frueher waren vier noetig, weil die Abstimmung auf dem
+// Handy lief und zu dritt ein Muenzwurf gewesen waere – abgestimmt wird aber
+// am Tisch, und wie viele daran sinnvoll sitzen, weiss der Tisch selbst.
+const MIN_PLAYERS = 3;
 
 const ROOM_IDLE_MS = 5 * 60_000;
 const SEAT_GRACE_MS = 60_000;
 
-const RUNDEN_OPTIONEN = [5, 8, 12, 0]; // 0 = ohne festes Ende
-const HINWEIS_OPTIONEN = [1, 2];       // wie oft jeder drankommt
-
-// Das Hilfswort ist die Kruecke des Imposters: **ein** Wort aus derselben
-// Gruppe, nie das gesuchte. Ohne es weiss er nur, worum es ungefaehr geht –
-// das ist die harte Fassung. Abschaltbar in der Lobby, weil beides Spass
-// macht, aber nicht derselbe: mit Hilfswort hat er einen Faden, an dem er
-// sich entlanghangeln kann, ohne muss er allein aus den Hinweisen bauen.
+// Das Hilfswort ist die einzige Kruecke des Imposters: **ein** Wort aus
+// derselben Gruppe, nie das gesuchte. Ohne es weiss er gar nichts – das ist
+// die harte Fassung. Der Host schaltet es in der Lobby an oder aus.
 const HILFSWORT_STANDARD = true;
-
-// Punkte. Bewusst so, dass ein erwischter Imposter mit einem guten Rateschluss
-// nicht genauso gut dasteht wie einer, der gar nicht erst aufgefallen ist.
-const PUNKTE_IMPOSTER_ENTKOMMEN = 2;
-const PUNKTE_IMPOSTER_GERATEN = 1;
-const PUNKTE_GRUPPE = 1;
 
 // ---------------------------------------------------------------------------
 // Raeume
@@ -106,7 +98,7 @@ function createRoom(isPublic) {
     phase: "lobby",
     hostId: null,
     players: new Map(),
-    settings: { rounds: 8, hinweise: 1, hilfswort: HILFSWORT_STANDARD },
+    settings: { hilfswort: HILFSWORT_STANDARD },
     letzteGruppe: null,
     letzterImposter: null,
     rundeNr: 0,
@@ -184,8 +176,6 @@ function publicPlayers(room) {
   return [...room.players.values()].map((p) => ({
     id: p.id,
     name: p.name,
-    punkte: p.punkte,
-    ready: p.ready,
     connected: p.connected,
     host: p.id === room.hostId,
   }));
@@ -237,33 +227,17 @@ function pushRoomList() {
 // Spielablauf
 // ---------------------------------------------------------------------------
 
-function startGame(room) {
-  clearTimers(room);
-  room.phase = "playing";
-  room.rundeNr = 0;
-  room.letzteGruppe = null;
-  room.letzterImposter = null;
-  for (const p of room.players.values()) {
-    p.punkte = 0;
-    p.malImposter = 0;
-    p.entkommen = 0;
-    p.ready = false;
-  }
-  pushState(room);
-  naechsteRunde(room);
-  pushRoomList();
-}
-
-function naechsteRunde(room) {
-  clearTimers(room);
-  const rounds = room.settings.rounds;
-  if (rounds > 0 && room.rundeNr >= rounds) return finishGame(room);
-
+/**
+ * Eine Runde austeilen. Das ist der ganze Spielteil: ein Wort fuer alle, einer
+ * bekommt es nicht. Danach passiert auf dem Server nichts mehr, bis der Host
+ * aufloest oder neu austeilt – dazwischen redet der Tisch.
+ */
+function neueRunde(room) {
   const da = anwesende(room);
   if (da.length < MIN_PLAYERS) {
-    // Zu wenige da – ohne genug Verdaechtige gibt die Runde nichts her.
-    // Der Raumzustand bleibt stehen, bis jemand zurueckkommt.
+    // Zu wenige da. Der Raumzustand bleibt stehen, bis jemand zurueckkommt.
     room.aktuell = null;
+    room.phase = "lobby";
     pushState(room);
     return;
   }
@@ -271,9 +245,9 @@ function naechsteRunde(room) {
   const { gruppe, begriffe, begriff } = zieheBegriff(room.letzteGruppe);
   room.letzteGruppe = gruppe;
 
-  // Einmal pro Runde gezogen und gemerkt, nicht bei jedem `pushRunde` neu:
-  // sonst stuende bei jedem Zustandswechsel ein anderes Hilfswort auf der
-  // Karte, und der Imposter haette nach drei Hinweisen die halbe Gruppe.
+  // Ein Wort aus derselben Gruppe, das **nicht** das gesuchte ist. Einmal pro
+  // Runde gezogen und gemerkt: waere es bei jedem Senden neu, bekaeme der
+  // Imposter bei jedem Zustandswechsel ein anderes zu sehen.
   const andere = begriffe.filter((w) => w !== begriff);
   const hilfswort = andere.length
     ? andere[Math.floor(Math.random() * andere.length)]
@@ -286,225 +260,68 @@ function naechsteRunde(room) {
     : da;
   const imposter = kandidaten[Math.floor(Math.random() * kandidaten.length)];
   room.letzterImposter = imposter.id;
-  imposter.malImposter++;
 
   room.rundeNr++;
+  room.phase = "runde";
   room.aktuell = {
     gruppe,
-    begriffe,
     begriff,
     hilfswort,
     imposterId: imposter.id,
-    // Jede Runde neu gemischt: waere es die Sitzordnung, saesse der Imposter
-    // auf Dauer immer an derselben Stelle in der Reihe.
-    reihenfolge: shuffle(da.map((p) => p.id)),
-    gesehen: new Set(),
-    schritt: "rollen",
-    hinweisIdx: 0,
-    stimmen: new Map(),
-    erkannt: false,
-    verdaechtigtId: null,
-    geraten: null,
-    ratenRichtig: false,
-    ergebnis: null,
+    // Wer beim Austeilen da war. Wer spaeter dazukommt, bekommt kein Wort
+    // mehr – sonst haette der Tisch mitten im Reden einen zweiten Mitwisser.
+    dabei: new Set(da.map((p) => p.id)),
+    aufgedeckt: false,
   };
-  pushRunde(room);
-}
-
-/** Wer gerade einen Hinweis sagen muss. */
-function amHinweis(room) {
-  const cur = room.aktuell;
-  if (!cur) return null;
-  const reihe = cur.reihenfolge.filter((id) => room.players.get(id)?.connected);
-  if (!reihe.length) return null;
-  return reihe[cur.hinweisIdx % reihe.length];
-}
-
-/**
- * Der Rundenzustand geht an jeden einzeln – und das ist hier keine Feinheit,
- * sondern das ganze Spiel: `begriff` darf nur an alle **ausser** den Imposter,
- * `binImposter` nur an ihn.
- */
-function pushRunde(room) {
-  const cur = room.aktuell;
-  if (!cur) return;
-  const reihe = cur.reihenfolge.filter((id) => room.players.get(id)?.connected);
-  const dranId = amHinweis(room);
-  const dran = dranId ? room.players.get(dranId) : null;
-  const gesamtSchritte = reihe.length * room.settings.hinweise;
-
-  for (const p of room.players.values()) {
-    const binImposter = p.id === cur.imposterId;
-    send(p, {
-      t: "runde",
-      n: room.rundeNr,
-      total: room.settings.rounds,
-      gruppe: cur.gruppe,
-      // Die Wortliste sehen alle **ausser** dem Imposter. Er bekommt sie erst,
-      // wenn er erwischt ist und raten darf – vorher waere das Raten geschenkt.
-      begriffe: (!binImposter || cur.schritt === "raten") ? cur.begriffe : null,
-      // Der Begriff selbst: nur an die Gruppe.
-      begriff: binImposter ? null : cur.begriff,
-      // Und das Hilfswort: nur an den Imposter, und nur wenn die Lobby es
-      // angeschaltet hat.
-      hilfswort: binImposter && room.settings.hilfswort ? cur.hilfswort : null,
-      binImposter,
-      schritt: cur.schritt,
-      gesehen: cur.gesehen.size,
-      gesehenGesamt: reihe.length,
-      habGesehen: cur.gesehen.has(p.id),
-      reihenfolge: reihe.map((id) => ({
-        id,
-        name: room.players.get(id)?.name ?? "?",
-      })),
-      dranId,
-      dranName: dran?.name ?? null,
-      hinweisNr: cur.hinweisIdx + 1,
-      hinweisGesamt: gesamtSchritte,
-      stimmenAb: cur.stimmen.size,
-      stimmenGesamt: reihe.length,
-      meineStimme: cur.stimmen.get(p.id) ?? null,
-      ergebnis: cur.ergebnis,
-    });
-  }
-}
-
-/** Alle haben ihre Karte gesehen? Dann kann die Hinweisrunde losgehen. */
-function pruefeGesehen(room) {
-  const cur = room.aktuell;
-  if (!cur || cur.schritt !== "rollen") return;
-  const reihe = cur.reihenfolge.filter((id) => room.players.get(id)?.connected);
-  if (reihe.length && reihe.every((id) => cur.gesehen.has(id))) {
-    cur.schritt = "hinweise";
-  }
-  pushRunde(room);
-}
-
-/** Ein Hinweis ist gesagt – weiter an den Naechsten oder ab zur Abstimmung. */
-function naechsterHinweis(room) {
-  const cur = room.aktuell;
-  if (!cur || cur.schritt !== "hinweise") return;
-  const reihe = cur.reihenfolge.filter((id) => room.players.get(id)?.connected);
-  const gesamt = reihe.length * room.settings.hinweise;
-  cur.hinweisIdx++;
-  if (cur.hinweisIdx >= gesamt) {
-    cur.schritt = "abstimmen";
-  }
-  pushRunde(room);
-}
-
-function pruefeStimmen(room) {
-  const cur = room.aktuell;
-  if (!cur || cur.schritt !== "abstimmen") return;
-  const reihe = cur.reihenfolge.filter((id) => room.players.get(id)?.connected);
-  if (reihe.length && reihe.every((id) => cur.stimmen.has(id))) {
-    auswerten(room);
-  } else {
-    pushRunde(room);
-  }
-}
-
-/**
- * Abstimmung auswerten. Erwischt ist der Imposter nur, wenn er **allein** oben
- * steht: bei Gleichstand hat sich die Runde nicht geeinigt, und dann ist er
- * durchgekommen.
- */
-function auswerten(room) {
-  const cur = room.aktuell;
-  if (!cur || (cur.schritt !== "abstimmen")) return;
-  clearTimers(room);
-
-  const zaehler = new Map();
-  for (const id of cur.reihenfolge) {
-    if (room.players.get(id)?.connected) {
-      zaehler.set(id, { id, name: room.players.get(id).name, stimmen: 0, waehler: [] });
-    }
-  }
-  for (const [waehlerId, zielId] of cur.stimmen) {
-    const e = zaehler.get(zielId);
-    if (!e) continue;
-    e.stimmen++;
-    const w = room.players.get(waehlerId);
-    if (w) e.waehler.push(w.name);
-  }
-  const sortiert = [...zaehler.values()].sort((a, b) => b.stimmen - a.stimmen);
-  const hoechst = sortiert[0]?.stimmen ?? 0;
-  const spitze = sortiert.filter((e) => e.stimmen === hoechst && hoechst > 0);
-
-  cur.stimmenTabelle = sortiert;
-  cur.verdaechtigtId = spitze.length === 1 ? spitze[0].id : null;
-  cur.erkannt = cur.verdaechtigtId === cur.imposterId;
-
-  if (cur.erkannt) {
-    // Erwischt – aber er darf noch einmal raten.
-    cur.schritt = "raten";
-    pushRunde(room);
-  } else {
-    abrechnen(room);
-  }
-}
-
-/** Punkte vergeben und die Auflösung zeigen. */
-function abrechnen(room) {
-  const cur = room.aktuell;
-  if (!cur) return;
-  const imposter = room.players.get(cur.imposterId);
-
-  if (!cur.erkannt) {
-    if (imposter) {
-      imposter.punkte += PUNKTE_IMPOSTER_ENTKOMMEN;
-      imposter.entkommen++;
-    }
-  } else if (cur.ratenRichtig) {
-    if (imposter) imposter.punkte += PUNKTE_IMPOSTER_GERATEN;
-  } else {
-    for (const id of cur.reihenfolge) {
-      const p = room.players.get(id);
-      // Bewusst ohne `connected`: wer die Runde mitgespielt hat, bekommt
-      // seinen Punkt auch dann, wenn die Verbindung im letzten Moment haengt.
-      if (p && p.id !== cur.imposterId) p.punkte += PUNKTE_GRUPPE;
-    }
-  }
-
-  cur.ergebnis = {
-    imposterId: cur.imposterId,
-    imposterName: imposter?.name ?? "?",
-    begriff: cur.begriff,
-    gruppe: cur.gruppe,
-    erkannt: cur.erkannt,
-    verdaechtigtId: cur.verdaechtigtId,
-    verdaechtigtName: cur.verdaechtigtId
-      ? room.players.get(cur.verdaechtigtId)?.name ?? "?"
-      : null,
-    geraten: cur.geraten,
-    ratenRichtig: cur.ratenRichtig,
-    tabelle: cur.stimmenTabelle ?? [],
-  };
-  cur.schritt = "aufloesung";
-  pushRunde(room);
-  pushState(room);
-}
-
-function finishGame(room) {
-  clearTimers(room);
-  room.phase = "final";
-  const gespielt = room.aktuell && room.aktuell.schritt !== "aufloesung"
-    ? room.rundeNr - 1
-    : room.rundeNr;
-  room.aktuell = null;
-  const tabelle = [...room.players.values()]
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      punkte: p.punkte,
-      malImposter: p.malImposter,
-      entkommen: p.entkommen,
-    }))
-    .sort((a, b) => b.punkte - a.punkte || b.entkommen - a.entkommen);
-  for (const p of room.players.values()) p.ready = false;
-  broadcast(room, { t: "final", tabelle, runden: Math.max(gespielt, 0) });
+  // Erst die Karten, dann der Raumzustand: der Client zeichnet den
+  // Spielbildschirm, sobald die Phase umspringt – laege dann noch die Karte
+  // der letzten Runde da, blitzte sie kurz auf.
+  pushKarten(room);
   pushState(room);
   pushRoomList();
+}
+
+/**
+ * Die Karte geht an jeden einzeln – und das ist hier kein Detail, sondern das
+ * ganze Spiel: `begriff` nur an alle **ausser** den Imposter, `hilfswort` nur
+ * an ihn.
+ */
+function karteFuer(room, p) {
+  const cur = room.aktuell;
+  const dabei = cur.dabei.has(p.id);
+  const binImposter = dabei && p.id === cur.imposterId;
+  const imposter = room.players.get(cur.imposterId);
+  return {
+    t: "karte",
+    n: room.rundeNr,
+    dabei,
+    binImposter,
+    begriff: dabei && !binImposter ? cur.begriff : null,
+    hilfswort: binImposter && room.settings.hilfswort ? cur.hilfswort : null,
+    aufgedeckt: cur.aufgedeckt,
+    // Erst beim Aufloesen erfaehrt der Bildschirm, wer es war und wie das Wort
+    // hiess. Vorher ist beides nie beim Client angekommen.
+    ergebnis: cur.aufgedeckt
+      ? {
+        imposterId: cur.imposterId,
+        imposterName: imposter?.name ?? "?",
+        begriff: cur.begriff,
+        gruppe: cur.gruppe,
+      }
+      : null,
+  };
+}
+
+function pushKarten(room) {
+  if (!room.aktuell) return;
+  for (const p of room.players.values()) send(p, karteFuer(room, p));
+}
+
+function aufdecken(room) {
+  const cur = room.aktuell;
+  if (!cur || cur.aufgedeckt) return;
+  cur.aufgedeckt = true;
+  pushKarten(room);
 }
 
 function backToLobby(room) {
@@ -514,13 +331,8 @@ function backToLobby(room) {
   room.rundeNr = 0;
   room.letzteGruppe = null;
   room.letzterImposter = null;
-  for (const p of room.players.values()) {
-    p.ready = false;
-    p.punkte = 0;
-    p.malImposter = 0;
-    p.entkommen = 0;
-  }
   pushState(room);
+  pushRoomList();
 }
 
 // ---------------------------------------------------------------------------
@@ -544,20 +356,16 @@ function attach(ws, room, player) {
     code: room.code,
   });
   send(player, roomState(room));
-  if (room.phase === "playing" && room.aktuell) pushRunde(room);
+  if (room.phase === "runde" && room.aktuell) send(player, karteFuer(room, player));
 }
 
-function makePlayer(name, ready) {
+function makePlayer(name) {
   return {
     id: token(),
     token: token(),
     name: cleanName(name),
     ws: null,
     dropTimer: null,
-    punkte: 0,
-    malImposter: 0,
-    entkommen: 0,
-    ready,
     connected: true,
     lastSeen: Date.now(),
   };
@@ -587,7 +395,7 @@ function handle(ws, msg) {
     }
     raumVermerkt(ws._ip);
     const r = createRoom(msg.isPublic);
-    const p = makePlayer(msg.name, true);
+    const p = makePlayer(msg.name);
     r.hostId = p.id;
     r.players.set(p.id, p);
     attach(ws, r, p);
@@ -616,10 +424,7 @@ function handle(ws, msg) {
     if (r.players.size >= MAX_PLAYERS) {
       return raw(ws, { t: "error", msg: `Der Raum ist voll (${MAX_PLAYERS} Spieler)` });
     }
-    if (r.phase !== "lobby") {
-      return raw(ws, { t: "error", msg: "Die Runde läuft schon" });
-    }
-    const p = makePlayer(msg.name, false);
+    const p = makePlayer(msg.name);
     r.players.set(p.id, p);
     attach(ws, r, p);
     pushState(r);
@@ -633,18 +438,11 @@ function handle(ws, msg) {
     case "name":
       player.name = cleanName(msg.name);
       pushState(room);
-      if (room.aktuell) pushRunde(room);
-      break;
-
-    case "ready":
-      player.ready = !!msg.value;
-      pushState(room);
+      if (room.aktuell) pushKarten(room);
       break;
 
     case "settings": {
       if (player.id !== room.hostId || room.phase !== "lobby") break;
-      if (RUNDEN_OPTIONEN.includes(msg.rounds)) room.settings.rounds = msg.rounds;
-      if (HINWEIS_OPTIONEN.includes(msg.hinweise)) room.settings.hinweise = msg.hinweise;
       if (typeof msg.hilfswort === "boolean") room.settings.hilfswort = msg.hilfswort;
       if (typeof msg.isPublic === "boolean") room.isPublic = msg.isPublic;
       pushState(room);
@@ -652,107 +450,32 @@ function handle(ws, msg) {
       break;
     }
 
+    // Kein Bereit-Knopf, auf den der Host warten muesste: er teilt aus, wenn
+    // der Tisch soweit ist. Das sieht er, er sitzt daneben.
     case "start": {
       if (player.id !== room.hostId || room.phase !== "lobby") break;
-      const da = anwesende(room);
-      if (da.length < MIN_PLAYERS) break;
-      if (!da.every((p) => p.ready || p.id === room.hostId)) break;
-      startGame(room);
+      if (anwesende(room).length < MIN_PLAYERS) break;
+      room.rundeNr = 0;
+      neueRunde(room);
       break;
     }
 
-    // „Karte gesehen" – erst wenn alle gedrückt haben, geht es los. Sonst
-    // fängt jemand an zu reden, während ein anderer noch nicht weiß, wer er ist.
-    case "gesehen": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "rollen") break;
-      cur.gesehen.add(player.id);
-      pruefeGesehen(room);
+    // Der Tisch hat sich geeinigt: aufdecken, wer es war und wie das Wort hiess.
+    case "aufloesen":
+      if (player.id !== room.hostId || room.phase !== "runde") break;
+      aufdecken(room);
       break;
-    }
 
-    case "hinweis": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "hinweise") break;
-      if (player.id !== amHinweis(room) && player.id !== room.hostId) break;
-      naechsterHinweis(room);
+    // Neu austeilen. Bewusst auch ohne vorheriges Aufloesen erlaubt – wenn
+    // jemand sein Wort laut vorgelesen hat, ist die Runde hin, und dann will
+    // niemand erst noch etwas aufdecken.
+    case "neu":
+      if (player.id !== room.hostId || room.phase !== "runde") break;
+      neueRunde(room);
       break;
-    }
-
-    // Der Host kann die Hinweisrunde abkürzen, wenn die Runde schon weiß, was
-    // sie denkt.
-    case "abstimmung": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "hinweise") break;
-      if (player.id !== room.hostId) break;
-      cur.schritt = "abstimmen";
-      pushRunde(room);
-      break;
-    }
-
-    case "stimme": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "abstimmen") break;
-      const ziel = room.players.get(String(msg.ziel ?? ""));
-      if (!ziel || !ziel.connected) break;
-      // Sich selbst zu verdächtigen wäre ein kostenloser Freispruch.
-      if (ziel.id === player.id) break;
-      cur.stimmen.set(player.id, ziel.id);
-      pruefeStimmen(room);
-      break;
-    }
-
-    case "aufloesen": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "abstimmen") break;
-      if (player.id !== room.hostId) break;
-      auswerten(room);
-      break;
-    }
-
-    // Erwischt – der Imposter rät den Begriff. Nur er, und nur einmal.
-    case "raten": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "raten") break;
-      if (player.id !== cur.imposterId) break;
-      const wahl = String(msg.begriff ?? "");
-      if (!cur.begriffe.includes(wahl)) break;
-      cur.geraten = wahl;
-      cur.ratenRichtig = wahl === cur.begriff;
-      abrechnen(room);
-      break;
-    }
-
-    // Der Imposter haengt beim Raten – der Host bricht ab, das zaehlt als
-    // danebengeraten. Ohne diesen Ausgang stuende die Runde bis zum Ablauf
-    // der Karenzzeit.
-    case "ratenAufgeben": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "raten") break;
-      if (player.id !== room.hostId) break;
-      const imposter = room.players.get(cur.imposterId);
-      if (imposter?.connected) break;
-      cur.geraten = null;
-      cur.ratenRichtig = false;
-      abrechnen(room);
-      break;
-    }
-
-    case "weiter": {
-      const cur = room.aktuell;
-      if (!cur || cur.schritt !== "aufloesung") break;
-      if (player.id !== room.hostId) break;
-      naechsteRunde(room);
-      break;
-    }
 
     case "ende":
-      if (player.id !== room.hostId || room.phase !== "playing") break;
-      finishGame(room);
-      break;
-
-    case "again":
-      if (player.id !== room.hostId || room.phase !== "final") break;
+      if (player.id !== room.hostId || room.phase !== "runde") break;
       backToLobby(room);
       break;
 
@@ -772,7 +495,6 @@ function dropPlayer(ws, { immediate = false } = {}) {
 
   player.connected = false;
   player.ws = null;
-  player.ready = false;
 
   if (immediate || room.phase === "lobby") {
     releaseSeat(room, player.id);
@@ -783,44 +505,30 @@ function dropPlayer(ws, { immediate = false } = {}) {
   player.dropTimer = setTimeout(() => releaseSeat(room, player.id), SEAT_GRACE_MS);
 
   ensureHost(room);
-  weiterOhne(room, player.id, false);
   pushState(room);
   pushRoomList();
 }
 
 /**
- * Jemand ist weg – die Runde darf nicht auf ihn warten. Je nach Schritt heisst
- * das etwas anderes, deshalb an einer Stelle gebuendelt.
+ * Jemand ist endgueltig weg. Fuer die Runde heisst das fast nichts – es gibt
+ * nichts, worauf sie warten koennte. Nur wenn ausgerechnet der Imposter geht,
+ * hat sie kein Ziel mehr und wird neu ausgeteilt.
  *
- * `endgueltig` unterscheidet den abgerissenen Socket vom wirklichen Weggehen.
- * Der Unterschied ist wichtiger, als er aussieht: auf dem Handy stirbt die
- * Verbindung schon, wenn man kurz die Nachrichten-App aufmacht. Wuerde das die
- * Runde abbrechen, waere das Spiel unspielbar.
+ * Der blosse Verbindungsabriss macht das ausdruecklich **nicht**: auf dem
+ * Handy stirbt die Verbindung schon, wenn man kurz die Nachrichten-App
+ * aufmacht. Wuerde das neu austeilen, waere das Spiel unspielbar.
  */
-function weiterOhne(room, id, endgueltig) {
+function ohneIhnWeiter(room, id) {
   const cur = room.aktuell;
   if (!cur) return;
-
-  // Der Imposter ist endgueltig weg: die Runde hat kein Ziel mehr, sie wird
-  // nicht gewertet und neu ausgegeben. Bei einem blossen Verbindungsabriss
-  // passiert das ausdruecklich *nicht* – die Runde laeuft ohne ihn weiter, und
-  // alle Wartepruefungen zaehlen ohnehin nur Verbundene.
-  if (endgueltig && cur.imposterId === id && cur.schritt !== "aufloesung") {
+  if (cur.imposterId === id && !cur.aufgedeckt) {
     room.rundeNr--;
     room.letzterImposter = null;
-    naechsteRunde(room);
+    neueRunde(room);
     return;
   }
-
-  cur.gesehen.delete(id);
-  cur.stimmen.delete(id);
-  for (const [waehlerId, zielId] of [...cur.stimmen]) {
-    if (zielId === id) cur.stimmen.delete(waehlerId);
-  }
-
-  if (cur.schritt === "rollen") pruefeGesehen(room);
-  else if (cur.schritt === "abstimmen") pruefeStimmen(room);
-  else pushRunde(room);
+  cur.dabei.delete(id);
+  pushKarten(room);
 }
 
 function releaseSeat(room, id) {
@@ -837,10 +545,7 @@ function releaseSeat(room, id) {
     return;
   }
 
-  if (room.phase === "playing" && room.aktuell) {
-    room.aktuell.reihenfolge = room.aktuell.reihenfolge.filter((x) => x !== id);
-    weiterOhne(room, id, true);
-  }
+  if (room.phase === "runde" && room.aktuell) ohneIhnWeiter(room, id);
 
   pushState(room);
   pushRoomList();
