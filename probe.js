@@ -26,6 +26,7 @@ function client(name) {
     if (m.t === "joined") c.you = m.you;
     if (m.t === "room") c.room = m;
     if (m.t === "karte") c.karte = m;
+    if (m.t === "pong") c.pong = m;
     if (m.t === "error") c.fehler.push(m.msg);
   };
   c.send = (m) => c.ws.send(JSON.stringify(m));
@@ -81,6 +82,31 @@ for (const [c, n] of [[B, "Ben"], [C, "Cem"], [D, "Dana"]]) {
   c.send({ t: "join", code, name: n });
 }
 await bis(() => A.room.players.length === 4, "vier Spieler");
+
+// --- Lebenszeichen: ohne ping wirft die Geisterwache alle raus --------------
+
+// Der Server schliesst jede Verbindung, die 65 s lang schweigt (GEIST_MS in
+// `server.js`). Geredet wird bei diesem Spiel am Tisch, gedrueckt wird nur vom
+// Host – ohne Ping schweigen also alle, und mitten in der Runde flog reihum
+// jeder heraus. Der Client hat die gemeinsame Schale nicht, die den Ping
+// mitbringt; er schickt ihn selbst, und das wird hier nachgehalten.
+{
+  A.send({ t: "ping", c: 4711 });
+  await bis(() => A.pong?.c === 4711, "Server antwortet auf ping");
+
+  const client = await Deno.readTextFile(new URL("./public/app.js", import.meta.url));
+  const takt = client.match(
+    /setInterval\(\s*\(\)\s*=>\s*send\(\{\s*t:\s*"ping"[^]*?\}\)\s*,\s*(\d[\d_]*)\s*\)/,
+  );
+  if (!takt) {
+    throw new Error("Der Client schickt keinen ping - die Geisterwache wirft nach 65 s jeden raus");
+  }
+  const ms = Number(takt[1].replaceAll("_", ""));
+  if (!(ms > 0 && ms <= 30_000)) {
+    throw new Error(`Der Ping-Takt ist ${ms} ms - das ist zu selten fuer eine Wache bei 65 s`);
+  }
+  console.log(`ok  der Client meldet sich alle ${ms / 1000} s, die Wache laesst ihn sitzen`);
+}
 
 // --- Kein Bereit-Knopf: der Host teilt aus, wann er will --------------------
 

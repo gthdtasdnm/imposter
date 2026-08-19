@@ -132,6 +132,14 @@ function connect() {
   };
 }
 
+// Lebenszeichen alle 25 s. Der Server wirft raus, wer 65 s lang schweigt (die
+// Geisterwache in `server.js`) – und geschwiegen wird hier fast immer: geredet
+// wird am Tisch, gedrückt wird nur vom Host, und der drückt einmal pro Runde.
+// Ohne diesen Ping flog deshalb am Ende jeder Runde die halbe Runde aus dem
+// Raum. Gleicher Takt wie in `gemeinsam/schale.js`, die den Ping schon immer
+// schickt – dieser Client hat die Schale nicht.
+setInterval(() => send({ t: "ping", c: Date.now() }), 25000);
+
 // ---------------------------------------------------------------------------
 // Bildschirme
 // ---------------------------------------------------------------------------
