@@ -370,10 +370,57 @@ button, input { font: inherit; color: inherit; }
   text-align: center;
 }
 
-/* --- Die Rollenkarte ----------------------------------------------------- */
+/* --- Die Ansage ---------------------------------------------------------- */
+/* Wer anfaengt und wie herum. Steht ueber der Karte und ist nie zugedeckt -
+   sie ist fuer alle gleich und soll auch von schraeg gegenueber lesbar sein. */
+
+.ansage {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: rgba(0, 0, 0, .28);
+  font-size: 1rem;
+  line-height: 1.45;
+  text-wrap: balance;
+}
+.ansage[hidden] { display: none; }
+.ansage b { color: var(--akzent2); }
+.ansage-richtung {
+  display: block;
+  margin-top: 2px;
+  font-size: .86rem;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+.ansage-pfeil { font-size: 1.05em; color: var(--cool); }
+
+/* --- Die Rollenkarte, zugedeckt ------------------------------------------ */
+/* Der Stapel ist Karte plus Deckel. `overflow:hidden` haelt den Deckel im
+   Rahmen, wenn er nach oben faehrt; `touch-action:none` ist Pflicht, sonst
+   scrollt das Handy die Buehne statt den Deckel zu schieben. */
+
+.stapel {
+  position: relative;
+  width: 100%;
+  border-radius: 20px;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.stapel[hidden] { display: none; }
 
 .karte {
   width: 100%;
+  /* Eine Karte, kein Streifen: sie soll die Buehne fuellen, damit das Schieben
+     einen Weg hat und das Wort von schraeg gegenueber nicht zu lesen ist. */
+  min-height: min(44dvh, 320px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 20px;
@@ -381,13 +428,48 @@ button, input { font: inherit; color: inherit; }
   box-shadow: var(--shadow);
   backdrop-filter: blur(14px);
 }
-.karte[hidden] { display: none; }
+
+.deckel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  padding: 20px;
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: grab;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(255, 255, 255, .035) 0 10px, transparent 10px 20px),
+    linear-gradient(165deg, #2c1a4e, #150d28 65%);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .06);
+  /* --auf: 0 = zu, 1 = ganz offen. Setzt app.js beim Schieben. */
+  transform: translateY(calc(var(--auf, 0) * -102%));
+  transition: transform .24s cubic-bezier(.22, .61, .36, 1);
+  will-change: transform;
+}
+/* Am Finger darf nichts nachlaufen - sonst fuehlt es sich an wie Gummi. */
+.stapel.zieht .deckel { transition: none; cursor: grabbing; }
+.deckel[hidden] { display: none; }
+.deckel-pfeil { font-size: 1.3rem; color: var(--akzent); line-height: 1; }
+.deckel-zeile { font-size: 1.15rem; font-weight: 800; letter-spacing: .01em; }
+.deckel-klein { font-size: .8rem; color: var(--muted); text-wrap: pretty; }
+/* Wer schon einmal nachgesehen hat, soll das sehen - sonst schiebt man aus
+   Unsicherheit dreimal nach und haelt die Karte laenger offen als noetig. */
+.deckel.gesehen .deckel-klein { color: var(--good); }
 /* Der Imposter sieht sofort, dass er es ist – ohne lesen zu müssen. In einer
    Runde, in der alle gleichzeitig auf ihr Handy schauen, zählt die halbe
    Sekunde. */
 .karte.imposter {
   border-color: rgba(255, 46, 136, .5);
-  background: linear-gradient(160deg, rgba(255, 46, 136, .14), rgba(30, 18, 52, .72));
+  background: linear-gradient(160deg, rgba(255, 46, 136, .22), rgba(30, 18, 52, .72));
 }
 .karte-kopf {
   display: block;
@@ -402,21 +484,6 @@ button, input { font: inherit; color: inherit; }
   line-height: 1.15;
   text-wrap: balance;
 }
-/* Das Hilfswort ist die einzige Kruecke des Imposters – es darf nicht wie
-   Kleingedrucktes unter der Karte aussehen, aber auch nicht mit dem grossen
-   Wortfeld darueber konkurrieren. Deshalb abgesetzt statt groesser. */
-.karte-hilf {
-  margin-top: 12px;
-  padding: 8px 12px;
-  border: 1px solid rgba(255, 46, 136, .35);
-  border-radius: 12px;
-  background: rgba(255, 46, 136, .1);
-  font-size: .88rem;
-  color: var(--ink);
-  text-wrap: pretty;
-}
-.karte-hilf[hidden] { display: none; }
-
 /* --- Auflösung ----------------------------------------------------------- */
 
 .aufloesung {
@@ -463,5 +530,5 @@ button, input { font: inherit; color: inherit; }
 .help-inner li { font-size: .92rem; line-height: 1.45; text-wrap: pretty; }
 
 @media (prefers-reduced-motion: reduce) {
-  .karte { transition: none; }
+  .karte, .deckel { transition: none; }
 }

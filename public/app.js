@@ -94,7 +94,15 @@ function send(msg) {
   if (sock && sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify(msg));
 }
 
+let wiederUhr = null;
+let meldeUhr = null;
+
 function connect() {
+  clearTimeout(wiederUhr);
+  wiederUhr = null;
+  if (sock && (sock.readyState === WebSocket.OPEN || sock.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
   // Muss aus dem Basispfad kommen: das Spiel läuft in Produktion unter
   // /imposter/, ein festes "/ws" landet auf der Domainwurzel.
   const url = new URL("ws", document.baseURI);
@@ -103,6 +111,7 @@ function connect() {
 
   sock.onopen = () => {
     retryIn = 500;
+    clearTimeout(meldeUhr);
     setStatus("");
     const s = session();
     if (state.pendingIntent) {
@@ -126,11 +135,35 @@ function connect() {
   };
 
   sock.onclose = () => {
-    setStatus("Verbindung weg – neuer Versuch …");
-    setTimeout(connect, retryIn);
+    // Nicht sofort Alarm schlagen: die allermeisten Abbrüche sind nach einer
+    // halben Sekunde geheilt, und eine Warnung, die bei jedem Wimpernschlag
+    // aufblinkt, liest irgendwann niemand mehr.
+    clearTimeout(meldeUhr);
+    meldeUhr = setTimeout(() => setStatus("Verbindung weg – neuer Versuch …"), 1500);
+    clearTimeout(wiederUhr);
+    wiederUhr = setTimeout(connect, retryIn);
     retryIn = Math.min(retryIn * 1.8, 8000);
   };
 }
+
+// Zurück aus der Hosentasche.
+//
+// Auf dem Handy ist der weggelegte Bildschirm der Normalfall: Safari friert
+// den Tab ein, kappt die Verbindung und lässt auch die Wartezeit oben nicht
+// weiterlaufen. Wer dann zurückkommt, sitzt vor einer toten Seite, bis der
+// Zähler irgendwann von selbst zuschlägt – bis zu acht Sekunden. Deshalb wird
+// bei jedem Zeichen von Rückkehr sofort und ohne Wartezeit neu verbunden;
+// `connect` bricht von selbst ab, wenn die Verbindung noch steht.
+function sofortWieder() {
+  if (document.visibilityState === "hidden") return;
+  retryIn = 500;
+  connect();
+}
+
+document.addEventListener("visibilitychange", sofortWieder);
+globalThis.addEventListener("pageshow", sofortWieder);
+globalThis.addEventListener("focus", sofortWieder);
+globalThis.addEventListener("online", sofortWieder);
 
 // Lebenszeichen alle 25 s. Der Server wirft raus, wer 65 s lang schweigt (die
 // Geisterwache in `server.js`) – und geschwiegen wird hier fast immer: geredet
@@ -336,7 +369,7 @@ function renderRoom() {
       card.innerHTML = `
         <div class="av">${avatarFor(p.id)}</div>
         <div class="nm">${escapeHtml(p.name)}${p.id === state.you ? " (du)" : ""}</div>
-        <div class="st">${!p.connected ? "weg" : p.host ? "teilt aus" : "dabei"}</div>
+        <div class="st">${!p.connected ? "kommt wieder" : p.host ? "teilt aus" : "dabei"}</div>
         ${p.host ? '<div class="host">HOST</div>' : ""}`;
     }
     list.append(card);
@@ -346,9 +379,6 @@ function renderRoom() {
   $("hostControls").hidden = !isHost;
   $("guestControls").hidden = isHost;
 
-  for (const b of document.querySelectorAll("[data-hilfswort]")) {
-    b.classList.toggle("sel", (b.dataset.hilfswort === "an") === !!r.settings.hilfswort);
-  }
   for (const b of document.querySelectorAll("[data-lobbyvis]")) {
     b.classList.toggle("sel", (b.dataset.lobbyvis === "public") === r.isPublic);
   }
@@ -368,11 +398,6 @@ for (const b of document.querySelectorAll("[data-raus]")) {
   b.addEventListener("click", verlassen);
 }
 
-for (const b of document.querySelectorAll("[data-hilfswort]")) {
-  b.addEventListener("click", () =>
-    send({ t: "settings", hilfswort: b.dataset.hilfswort === "an" })
-  );
-}
 for (const b of document.querySelectorAll("[data-lobbyvis]")) {
   b.addEventListener("click", () =>
     send({ t: "settings", isPublic: b.dataset.lobbyvis === "public" })
@@ -402,11 +427,125 @@ function knopf(label, cls, fn) {
   return b;
 }
 
+// --- Der Deckel ------------------------------------------------------------
+//
+// Bis zum 19.08.2026 lag das Wort offen auf dem Bildschirm. Wer es gelesen
+// hatte, drehte das Handy um oder schaltete es aus – und ein ausgeschaltetes
+// Handy ist eine gekappte Verbindung. Genau daran ist die Runde reihum
+// auseinandergefallen.
+//
+// Jetzt liegt die Karte zugedeckt. Der Deckel folgt dem Finger nach oben, ab
+// der Hälfte springt er ganz auf, und beim Loslassen fällt er wieder zu. Das
+// Handy kann offen liegen bleiben; niemand muss es anfassen, um es geheim zu
+// halten.
+//
+// Wichtig: der Deckel ist reine Bildschirmsache. Der Server weiß nichts davon,
+// niemand wartet darauf, dass jemand nachgesehen hat.
+const stapel = () => $("stapel");
+let deckelAuf = 0;      // 0 = zu, 1 = ganz offen
+let zieht = null;       // Fingerkennung und Startpunkt, solange geschoben wird
+let schonGesehen = false;
+
+function setzeDeckel(wert) {
+  deckelAuf = Math.max(0, Math.min(1, wert));
+  stapel().style.setProperty("--auf", deckelAuf.toFixed(3));
+  if (deckelAuf > .98 && !schonGesehen) {
+    schonGesehen = true;
+    $("deckel").classList.add("gesehen");
+    $("deckelKlein").textContent = "schon angesehen – nochmal geht immer";
+  }
+}
+
+/** Zugedeckt wird nur, was auch geheim ist. */
+const deckelNoetig = () => !!(state.karte?.dabei && !state.karte.aufgedeckt);
+
+function deckelZurueck() {
+  schonGesehen = false;
+  $("deckel").classList.remove("gesehen");
+  $("deckelKlein").textContent = "und halten – Loslassen deckt zu";
+  setzeDeckel(0);
+}
+
+{
+  const el = stapel();
+
+  const runter = (e) => {
+    if (!deckelNoetig() || zieht) return;
+    zieht = { id: e.pointerId, y: e.clientY };
+    try { el.setPointerCapture(e.pointerId); } catch { /* Maus ohne Capture */ }
+    el.classList.add("zieht");
+  };
+
+  const bewegt = (e) => {
+    if (!zieht || e.pointerId !== zieht.id) return;
+    e.preventDefault();
+    // Die ersten Pixel zählen nicht, sonst deckt schon ein Antippen auf.
+    const weg = zieht.y - e.clientY - 12;
+    const wert = weg / Math.max(80, el.offsetHeight * .45);
+    // Ab der Hälfte springt er ganz auf und bleibt es, solange der Finger
+    // liegt – sonst müsste man auf zwei Zentimeter genau halten, um zu lesen.
+    setzeDeckel(wert > .5 ? 1 : wert);
+  };
+
+  const hoch = (e) => {
+    if (!zieht || (e && e.pointerId !== zieht.id)) return;
+    zieht = null;
+    el.classList.remove("zieht");
+    setzeDeckel(0);
+  };
+
+  el.addEventListener("pointerdown", runter);
+  el.addEventListener("pointermove", bewegt);
+  for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    el.addEventListener(t, hoch);
+  }
+  // Ohne Finger: Leertaste oder Enter halten. Gleiche Regel – Loslassen deckt
+  // wieder zu.
+  $("deckel").addEventListener("keydown", (e) => {
+    if (e.key !== " " && e.key !== "Enter") return;
+    e.preventDefault();
+    if (deckelNoetig()) setzeDeckel(1);
+  });
+  $("deckel").addEventListener("keyup", (e) => {
+    if (e.key === " " || e.key === "Enter") setzeDeckel(0);
+  });
+  // Der Deckel ist ein Knopf, damit ihn die Tastatur erreicht – klicken soll
+  // er aber nichts, sonst blitzt das Wort bei einem Fehltipper auf.
+  $("deckel").addEventListener("click", (e) => e.preventDefault());
+}
+
+// --- Die Ansage ------------------------------------------------------------
+
+/**
+ * Wer anfängt und wie herum es geht. Winzige Sache, riesiger Unterschied: ohne
+ * sie fängt jede Runde mit „wer fängt an?" und „nach links oder rechts?" an,
+ * und mitten im Reden weiß plötzlich niemand mehr, wer dran gewesen wäre.
+ * Alle lesen denselben Satz, das Handy verwaltet aber keine Reihenfolge – es
+ * sagt sie einmal an, und dann redet der Tisch.
+ */
+function renderAnsage(k) {
+  const el = $("ansage");
+  const a = k.ansage;
+  if (!a || !k.dabei) { el.hidden = true; return; }
+  const wer = a.binStarter
+    ? "<b>Du</b> fängst an"
+    : `<b>${escapeHtml(a.starterName)}</b> fängt an`;
+  const pfeil = a.richtung === "links" ? "←" : "→";
+  el.innerHTML = `${wer}
+    <span class="ansage-richtung">
+      <span class="ansage-pfeil">${pfeil}</span> dann reihum nach ${escapeHtml(a.richtung)}
+    </span>`;
+  el.hidden = false;
+}
+
 /**
  * Die Karte. Sie hat drei Zustände und keinen davon muss jemand wegklicken:
  * das eigene Wort, „du bist der Imposter", und nach dem Auflösen die Wahrheit.
+ * Die ersten beiden liegen unter dem Deckel, das Ergebnis liegt offen.
  * Wer mitten in einer laufenden Runde dazukommt, wartet auf die nächste.
  */
+let gezeichneteRunde = null;
+
 function renderKarte() {
   const k = state.karte;
   if (!k || state.room?.phase !== "runde") return;
@@ -416,12 +555,20 @@ function renderKarte() {
   $("rundeNo").textContent = String(k.n);
   $("endeBtn").hidden = !isHost;
 
+  // Neue Runde oder gerade aufgelöst: der Deckel fängt von vorne an.
+  const marke = `${k.n}/${k.aufgedeckt}/${k.dabei}`;
+  if (marke !== gezeichneteRunde) {
+    gezeichneteRunde = marke;
+    deckelZurueck();
+  }
+
+  renderAnsage(k);
+
   const karte = $("karte");
-  const hilf = $("karteHilf");
   const auf = $("aufloesung");
-  karte.hidden = false;
+  stapel().hidden = false;
   auf.hidden = true;
-  hilf.hidden = true;
+  $("deckel").hidden = !deckelNoetig();
 
   if (k.aufgedeckt) {
     const e = k.ergebnis;
@@ -438,14 +585,13 @@ function renderKarte() {
     karte.classList.remove("imposter");
     $("karteKopf").textContent = "Du bist im Raum";
     $("karteWort").textContent = "⏳";
-    hilf.hidden = false;
-    hilf.textContent = "Diese Runde läuft schon. Beim nächsten Austeilen bist du dabei.";
+    auf.hidden = false;
+    auf.innerHTML =
+      `<p class="auf-klein">Diese Runde läuft schon. Beim nächsten Austeilen bist du dabei.</p>`;
   } else if (k.binImposter) {
     karte.classList.add("imposter");
-    $("karteKopf").textContent = "Du bist der Imposter";
-    $("karteWort").textContent = "🕵️";
-    hilf.hidden = !k.hilfswort;
-    hilf.textContent = k.hilfswort ? `Hilfswort: „${k.hilfswort}“` : "";
+    $("karteKopf").textContent = "Du bist der";
+    $("karteWort").textContent = "IMPOSTER";
   } else {
     karte.classList.remove("imposter");
     $("karteKopf").textContent = "Dein Wort";

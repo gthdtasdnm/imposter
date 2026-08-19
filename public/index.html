@@ -64,13 +64,6 @@
 
     <div id="hostControls" hidden>
       <div class="setting">
-        <span class="setting-label">Hilfswort für den Imposter</span>
-        <div class="segmented">
-          <button class="seg" data-hilfswort="an">An</button>
-          <button class="seg" data-hilfswort="aus">Aus</button>
-        </div>
-      </div>
-      <div class="setting">
         <span class="setting-label">Sichtbar</span>
         <div class="segmented">
           <button class="seg" data-lobbyvis="public">Öffentlich</button>
@@ -92,9 +85,10 @@
 </section>
 
 <!-- ------------------------------------------------------------------ -->
-<!-- Der ganze Spielbildschirm. Er zeigt genau eine Sache: das eigene Wort.
-     Keine Reihenfolge, keine Phasen, keine Knöpfe zum Bestätigen – wer dran
-     ist und wann weitergeht, macht der Tisch unter sich aus. -->
+<!-- Der ganze Spielbildschirm. Zwei Sachen stehen darauf: die Ansage, wer
+     anfängt und wie herum es geht – offen, für alle gleich –, und darunter die
+     zugedeckte Karte mit dem eigenen Wort. Keine Phasen, keine Knöpfe zum
+     Bestätigen: wann weitergeht, macht der Tisch unter sich aus. -->
 <section id="screen-game" class="screen">
   <div class="game">
     <header class="topbar">
@@ -104,10 +98,24 @@
     </header>
 
     <main class="buehne">
-      <div class="karte" id="karte" hidden>
-        <span class="karte-kopf" id="karteKopf">Dein Wort</span>
-        <p class="karte-wort" id="karteWort"></p>
-        <p class="karte-hilf" id="karteHilf" hidden></p>
+      <!-- Kein Geheimnis, deshalb über der Karte und immer offen. -->
+      <p class="ansage" id="ansage" hidden></p>
+
+      <!-- Die Karte liegt zugedeckt auf dem Tisch. Wer sein Wort sehen will,
+           schiebt den Deckel mit dem Finger nach oben; beim Loslassen fällt er
+           wieder zu. So muss niemand sein Handy umdrehen oder ausschalten –
+           und ein ausgeschaltetes Handy war der halbe Ärger an diesem Spiel. -->
+      <div class="stapel" id="stapel" hidden>
+        <div class="karte" id="karte">
+          <span class="karte-kopf" id="karteKopf">Dein Wort</span>
+          <p class="karte-wort" id="karteWort"></p>
+        </div>
+        <button class="deckel" id="deckel" type="button"
+                aria-label="Karte ansehen – nach oben schieben und halten">
+          <span class="deckel-pfeil" aria-hidden="true">▲</span>
+          <span class="deckel-zeile">Hochschieben</span>
+          <span class="deckel-klein" id="deckelKlein">und halten – Loslassen deckt zu</span>
+        </button>
       </div>
 
       <!-- Nach dem Auflösen: wer es war. -->
@@ -131,14 +139,18 @@
           euch.</li>
       <li><b>Alle bekommen dasselbe Wort</b> – bis auf einen. Der sieht nur,
           dass er der Imposter ist.</li>
-      <li><b>Reihum sagt jeder laut ein Wort dazu.</b> Wer anfängt und wie
-          herum es geht, macht ihr selbst aus. Nicht zu deutlich – sonst weiß
-          der Imposter gleich Bescheid. Aber auch nicht zu vage, sonst hält
-          man dich selbst für ihn.</li>
+      <li><b>Die Karte liegt zugedeckt.</b> Zum Ansehen den Deckel nach oben
+          schieben und halten – beim Loslassen fällt er wieder zu. Dein Handy
+          kann also offen liegen bleiben; anlassen ist sogar besser, sonst
+          reißt die Verbindung.</li>
+      <li><b>Oben steht, wer anfängt und wie herum es geht.</b> Alle lesen
+          denselben Satz – das spart die Diskussion, mit der sonst jede Runde
+          anfängt.</li>
+      <li><b>Reihum sagt jeder laut ein Wort dazu.</b> Nicht zu deutlich –
+          sonst weiß der Imposter gleich Bescheid. Aber auch nicht zu vage,
+          sonst hält man dich selbst für ihn.</li>
       <li><b>Der Imposter tut so, als wüsste er Bescheid</b>, und hängt sich
-          an das, was er hört. Hat der Host das <b>Hilfswort</b> angeschaltet,
-          bekommt er ein einzelnes Wort aus derselben Gruppe – nie das
-          gesuchte. Ohne Hilfswort hat er gar nichts.</li>
+          an das, was er hört. Mehr als „du bist es“ bekommt er nicht.</li>
       <li><b>Am Ende zeigt ihr aufeinander</b> – laut, gleichzeitig, wie ihr
           wollt. Das Handy stimmt nicht ab und zählt nichts.</li>
       <li><b>Der Host tippt auf „Auflösen“:</b> dann sehen alle, wer es war

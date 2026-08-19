@@ -4,9 +4,10 @@ Alle bekommen dasselbe Wort – bis auf einen. Reihum sagt jeder laut ein Wort
 dazu; wer zu deutlich wird, verrät das Wort, wer zu vage bleibt, wird selbst
 verdächtigt. Am Ende zeigt ihr aufeinander.
 
-**Das Handy teilt nur Karten aus.** Es gibt keine Reihenfolge, keine
-Hinweisschritte, keine Abstimmung und keine Punkte – all das macht der Tisch
-unter sich aus. Der Bildschirm zeigt ein Wort und sonst nichts.
+**Das Handy teilt nur Karten aus.** Es gibt keine Hinweisschritte, keine
+Abstimmung und keine Punkte – all das macht der Tisch unter sich aus. Der
+Bildschirm zeigt eine zugedeckte Karte und darüber einen Satz: wer anfängt und
+wie herum es geht.
 
 Läuft auf **Deno**, ohne eine einzige externe Abhängigkeit. Kein Build-Schritt,
 kein `node_modules`, ein Prozess.
@@ -43,14 +44,52 @@ alle das Handy vor sich haben, er sitzt daneben.
 
 1. **Der Host tippt auf „Austeilen".** Sofort hat jeder seine Karte – nichts zu
    bestätigen, kein Warten auf den Letzten.
-2. **Ihr redet.** Reihum ein Wort, wer anfängt und wie herum es geht, macht ihr
-   selbst aus. Das Handy sagt niemandem, dass er dran ist.
-3. **Ihr zeigt aufeinander.** Laut, gleichzeitig, wie ihr wollt.
-4. **Der Host tippt auf „Auflösen".** Alle sehen, wer der Imposter war und wie
+2. **Jeder schiebt seine Karte kurz auf** und sieht darunter sein Wort.
+3. **Ihr redet.** Reihum ein Wort. Oben steht, wer anfängt und wie herum es
+   geht; wer gerade dran ist, weiß der Tisch danach von selbst.
+4. **Ihr zeigt aufeinander.** Laut, gleichzeitig, wie ihr wollt.
+5. **Der Host tippt auf „Auflösen".** Alle sehen, wer der Imposter war und wie
    das Wort hieß. Dann „Nächste Runde".
 
 Mehr Knöpfe gibt es nicht, und alle vier gehören dem Host. Jeder Knopf, auf den
-die Runde warten muss, hält eine Runde auf, die längst weiterredet.
+die Runde warten muss, hält eine Runde auf, die längst weiterredet – der Deckel
+ist deshalb reine Bildschirmsache: der Server weiß nicht, wer schon nachgesehen
+hat, und niemand wartet darauf.
+
+## Die Karte liegt zugedeckt
+
+Bis zum 19.08.2026 stand das Wort offen auf dem Bildschirm. Wer es gelesen
+hatte, drehte das Handy um oder schaltete es aus – und ein ausgeschaltetes Handy
+ist eine gekappte Verbindung. Reihum fiel so der halbe Tisch aus dem Raum.
+
+Jetzt liegt die Karte zugedeckt: **Deckel nach oben schieben und halten**, beim
+Loslassen fällt er wieder zu. Ab der halben Höhe springt er ganz auf, damit man
+nicht auf zwei Zentimeter genau halten muss; ein bloßes Antippen deckt nichts
+auf. Ohne Finger geht es mit Leertaste oder Enter – ebenfalls gehalten. Das
+Handy kann dabei offen liegen bleiben, und genau das ist der Sinn.
+
+Wer schon nachgesehen hat, sieht das dem Deckel an („schon angesehen"). Sonst
+schiebt man aus Unsicherheit dreimal nach und hält die Karte länger offen als
+nötig.
+
+Offen liegt die Karte nur in zwei Fällen: nach dem **Auflösen** – da ist nichts
+mehr geheim – und bei jemandem, der mitten in die Runde gekommen ist und
+ohnehin kein Wort hat.
+
+## Wer anfängt, und wie herum
+
+Ein Satz über der Karte, für alle gleich:
+
+> **Mira** fängt an → dann reihum nach rechts
+
+Klein, aber ohne ihn fängt jede Runde mit derselben Diskussion an, und mitten im
+Reden weiß plötzlich niemand mehr, wer dran gewesen wäre. Der Anfänger wird
+jede Runde neu gezogen und ist **nie zweimal hintereinander** derselbe – zuerst
+reden ist die undankbarste Rolle. Die Richtung wird gewürfelt.
+
+Es ist eine **Ansage, keine Reihenfolge**: der Server verwaltet nichts davon,
+niemand bekommt ein „du bist dran", und niemand wartet auf einen Knopf. Gesagt
+wird es einmal, dann redet der Tisch.
 
 Wer **mitten in einer laufenden Runde** dazukommt, bekommt kein Wort mehr,
 sondern wartet auf das nächste Austeilen – sonst hätte der Tisch unbemerkt einen
@@ -60,20 +99,11 @@ zweiten Mitwisser.
 
 Nur, dass er es ist. Kein Wort, keine Gruppe, keine Wortliste.
 
-Damit er nicht völlig blank dasteht, gibt es das **Hilfswort**: ein einzelnes
-Wort aus derselben Gruppe, nie das gesuchte. Der Host schaltet es in der Lobby
-an oder aus (Voreinstellung: an).
-
-| Hilfswort | Was der Imposter sieht |
-|---|---|
-| **an** | „Du bist der Imposter" + ein Wort aus der Gruppe, z. B. „Bohrmaschine" |
-| **aus** | „Du bist der Imposter". Sonst nichts |
-
-Gezogen wird das Hilfswort **einmal pro Runde** und gemerkt. Würde es bei jedem
-Senden neu gewürfelt, hätte der Imposter nach ein paar Zustandswechseln die
-halbe Gruppe gesehen – und die gibt es ja gerade nicht zu sehen. `probe.js`
-prüft das, indem sie jemanden umbenennt und schaut, ob dasselbe Wort stehen
-bleibt.
+Bis zum 19.08.2026 gab es dazu ein **Hilfswort**: ein einzelnes Wort aus
+derselben Gruppe, nie das gesuchte. Es ist ersatzlos geflogen. Es war entweder
+zu nah am gesuchten Wort und damit die halbe Antwort, oder zu weit weg und damit
+eine Fährte, die den Imposter im ersten Satz auffliegen ließ. Ohne es bleibt
+ihm, was das Spiel eigentlich ausmacht: zuhören und mitreden.
 
 ## Die Begriffe
 
@@ -81,9 +111,11 @@ bleibt.
 Server eine Gruppe – nie zweimal dieselbe hintereinander – und daraus einen
 Begriff.
 
-Jede Gruppe braucht **mindestens acht** Begriffe: bei vier wäre das Hilfswort
-fast schon die Antwort. `probe.js` prüft das, prüft auf Doppelte innerhalb einer
-Gruppe – und darauf, dass **kein Begriff in zwei Gruppen** vorkommt.
+Jede Gruppe braucht **mindestens acht** Begriffe: darunter wiederholt sich an
+einem Abend dasselbe Wort, und die nach dem Auflösen genannte Gruppe verriete
+für die nächste Runde zu viel. `probe.js` prüft das, prüft auf Doppelte
+innerhalb einer Gruppe – und darauf, dass **kein Begriff in zwei Gruppen**
+vorkommt.
 
 Alle Begriffe sind gewöhnliche Gattungsbegriffe: keine Marken, keine Werktitel,
 keine Eigennamen. Regeln sind frei, fremde Wortlisten nicht – und ein
@@ -99,8 +131,8 @@ Blick in die Entwicklerwerkzeuge bringt ihm nichts – dort ist das Wort nie
 angekommen.
 
 `probe.js` prüft genau das mit fünf echten Verbindungen: nach dem Austeilen muss
-**genau ein** Client `binImposter` haben, genau dieser darf `begriff` nicht
-kennen, und sein Hilfswort darf nie das gesuchte Wort sein.
+**genau ein** Client `binImposter` haben, und in seiner ganzen Karte darf das
+gesuchte Wort an keiner Stelle vorkommen.
 
 ## Ein Imposter, nicht zwei
 
@@ -114,13 +146,31 @@ deshalb schließt der Server die Person der Vorrunde aus.
 
 Der Unterschied zwischen **Verbindungsabriss** und **wirklich weggehen** ist
 hier wichtiger als in den anderen Spielen. Auf dem Handy stirbt der Socket
-schon, wenn man kurz die Nachrichten-App aufmacht.
+schon, wenn man kurz die Nachrichten-App aufmacht – und genau das machen Leute
+an einem Tisch dauernd.
 
-- **Verbindung weg:** nichts passiert. Die Runde wartet auf niemanden, also
-  kann sie auch von niemandem aufgehalten werden. Wer zurückkommt, bekommt
-  seine Karte erneut geschickt – dieselbe.
-- **Der Imposter geht endgültig:** die Runde hat kein Ziel mehr und wird neu
-  ausgeteilt.
+Seit dem 19.08.2026 gilt deshalb: **endgültig geht nur, wer selbst auf
+„Verlassen" tippt.** Alles andere ist eine Pause, und eine Pause kostet nichts.
+
+| Was passiert | Was der Server tut |
+|---|---|
+| Bildschirm gesperrt, Tab weggewischt, Funkloch | Der Platz bleibt **20 Minuten** reserviert. Im Warteraum genauso wie mitten in der Runde. |
+| Zurückgekommen | Derselbe Platz, dieselbe Karte, dieselbe Runde. Der Tisch hat nichts gemerkt. |
+| Der **Host** ist weg | Sein Zeichen bleibt **45 Sekunden** liegen. Erst dann wandert es weiter, sonst könnte niemand mehr austeilen. |
+| Ausgeteilt, während jemand weg war | Er ist trotzdem dabei und findet seine Karte vor, sobald er wieder hinsieht. |
+| Alle sind weg | Der Raum steht noch **30 Minuten**. Der Code funktioniert so lange weiter. |
+| „Verlassen" getippt | Platz weg. War es der Imposter, wird die Runde neu ausgeteilt – sie hätte sonst kein Ziel mehr. |
+
+Vorher gab der Warteraum den Platz **sofort** frei: wer wiederkam, war ein
+neuer Spieler, das Hostzeichen stand woanders, und der halbe Tisch spann.
+
+Der Client hilft mit: er meldet sich alle 25 s (die Geisterwache im Server wirft
+sonst raus, wer schweigt), und sobald der Bildschirm wieder angeht, verbindet er
+**sofort** neu, statt die Wartezeit abzusitzen – auf dem Handy laufen Timer im
+Hintergrund nicht weiter.
+
+Nachgestellt wird das alles in `probe.js` mit echten Abbrüchen: kappen,
+weiterspielen, wiederkommen, vergleichen.
 
 ## Dateien
 
@@ -129,10 +179,22 @@ schon, wenn man kurz die Nachrichten-App aufmacht.
 | `server.js` | statische Dateien, WebSocket, Räume, Kartenausgabe |
 | `begriffe.js` | die zwölf Begriffsgruppen |
 | `bremse.js` | gemeinsames Rate-Limiting, **wortgleich in allen Spielen** |
-| `probe.js` | teilt mit fünf Clients aus und prüft die Geheimhaltung |
+| `probe.js` | teilt mit fünf Clients aus, prüft Geheimhaltung, Ansage und Plätze |
 | `public/index.html` | drei Bildschirme plus die Hilfe |
 | `public/style.css` | oben der gemeinsame Lobby-Block, darunter das Eigene |
 | `public/app.js` | Verbindung, Warteraum, Karte, Auflösung |
+
+Dazu im Browser, weil eine Rechenprobe keinen Deckel schiebt:
+
+```bash
+cd /var/www/html/imposter
+PORT=8086 HOST=127.0.0.1 deno run --allow-net --allow-read --allow-env --allow-sys server.js &
+cd /root/werkzeug-screenshots && node pruefe-imposter.mjs
+ss -tlnp | grep ':8086 '   # danach über den Port beenden, nie per pkill
+```
+
+Sie fragt den Browser mit `elementFromPoint`, wer an der Stelle des Wortes
+obenauf liegt – gemessen wird, was man **sieht**, nicht was im HTML steht.
 
 `bremse.js` und der CSS-Block bis `══ Gemeinsame Lobby-Basis ══ Ende ══` sind in
 allen Spielen identisch und werden **von Hand** synchron gehalten. Wer dort

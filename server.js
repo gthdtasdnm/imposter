@@ -4,10 +4,14 @@
 //
 // Raum, Host, Karenzzeit und Bremse sind Zeile fuer Zeile wie in „Ich hab noch
 // nie". Der Spielteil daneben ist absichtlich winzig: **das Handy teilt nur
-// Karten aus**. Es gibt keine Reihenfolge, keine Hinweisschritte, keine
-// Abstimmung und keine Punkte – gespielt wird am Tisch, das Geraet haelt nur
-// das Wort geheim. Deshalb auch kein „Bereit" und kein „Weiter": jeder Knopf,
-// auf den die Runde warten muss, haelt eine Runde auf, die laengst weiterredet.
+// Karten aus**. Es gibt keine Hinweisschritte, keine Abstimmung und keine
+// Punkte – gespielt wird am Tisch, das Geraet haelt nur das Wort geheim.
+// Deshalb auch kein „Bereit" und kein „Weiter": jeder Knopf, auf den die Runde
+// warten muss, haelt eine Runde auf, die laengst weiterredet.
+//
+// Zwei Dinge sagt es trotzdem an, weil sie sonst jede Runde neu ausdiskutiert
+// werden: **wer anfaengt und wie herum es geht**. Das ist keine Reihenfolge,
+// die der Server verwaltet – es ist ein Satz, den alle gleich lesen.
 
 import { zieheBegriff } from "./begriffe.js";
 import {
@@ -34,13 +38,29 @@ const MAX_PLAYERS = 10;
 // am Tisch, und wie viele daran sinnvoll sitzen, weiss der Tisch selbst.
 const MIN_PLAYERS = 3;
 
-const ROOM_IDLE_MS = 5 * 60_000;
-const SEAT_GRACE_MS = 60_000;
-
-// Das Hilfswort ist die einzige Kruecke des Imposters: **ein** Wort aus
-// derselben Gruppe, nie das gesuchte. Ohne es weiss er gar nichts – das ist
-// die harte Fassung. Der Host schaltet es in der Lobby an oder aus.
-const HILFSWORT_STANDARD = true;
+// Ein Raum ueberlebt eine Kaffeepause.
+//
+// Wer sein Handy weglegt, den Bildschirm sperrt oder zwischendurch etwas
+// anderes macht, ist die Regel und nicht die Ausnahme – und jedes Mal, wenn so
+// jemand als *neuer* Spieler zurueckkam, spann der ganze Tisch: der Platz war
+// weg, das Hostzeichen woanders, die Karte futsch. Deshalb bleibt der Platz
+// reserviert, in **jeder** Phase, und zwar so lange, dass eine Zigarette,
+// ein Anruf oder ein leerer Akku ihn nicht kostet. Zurueckkommen heisst dann:
+// derselbe Platz, dieselbe Karte, dieselbe Runde – und der Rest hat nichts
+// davon gemerkt.
+//
+// Endgueltig geht nur, wer selbst auf „Verlassen" tippt.
+const ROOM_IDLE_MS = 30 * 60_000;    // leerer Raum bleibt so lange stehen
+const SEAT_GRACE_MS = 20 * 60_000;   // Platz bleibt so lange reserviert
+// Das Hostzeichen ist die eine Ausnahme: es muss wandern, sonst kann niemand
+// mehr austeilen. Aber nicht sofort – eine Dreiviertelminute lang wartet der
+// Tisch lieber, als dass das Zeichen bei jedem gesperrten Bildschirm springt.
+// Ueber `HOST_MS` verkuerzbar – nicht fuer den Betrieb, sondern damit man den
+// Wechsel von Hand nachstellen kann, ohne 45 Sekunden dazusitzen.
+const HOST_GRACE_MS = (() => {
+  const n = Number(Deno.env.get("HOST_MS"));
+  return Number.isFinite(n) && n >= 200 ? n : 45_000;
+})();
 
 // ---------------------------------------------------------------------------
 // Raeume
@@ -98,13 +118,14 @@ function createRoom(isPublic) {
     phase: "lobby",
     hostId: null,
     players: new Map(),
-    settings: { hilfswort: HILFSWORT_STANDARD },
     letzteGruppe: null,
     letzterImposter: null,
+    letzterStarter: null,
     rundeNr: 0,
     aktuell: null,
     timers: new Set(),
     idleTimer: null,
+    hostTimer: null,
     lastActivity: Date.now(),
   };
   rooms.set(room.code, room);
@@ -130,6 +151,7 @@ function clearTimers(room) {
 function destroyRoom(room) {
   clearTimers(room);
   cancelIdleClose(room);
+  cancelHostWacht(room);
   for (const p of room.players.values()) {
     if (p.dropTimer) clearTimeout(p.dropTimer);
   }
@@ -137,12 +159,44 @@ function destroyRoom(room) {
   pushRoomList();
 }
 
+/**
+ * Es muss immer einen Host geben – aber **nur**, wenn der bisherige gar keinen
+ * Platz mehr hat. Wer nur gerade nicht verbunden ist, behaelt sein Zeichen;
+ * darum kuemmert sich `hostWacht` mit einer Uhr. Frueher zog diese Funktion
+ * das Zeichen sofort weiter, sobald der Host einmal kurz wegwar.
+ */
 function ensureHost(room) {
-  const current = room.players.get(room.hostId);
-  if (current?.connected) return;
+  if (room.players.has(room.hostId)) return;
   const all = [...room.players.values()];
   const next = all.find((p) => p.connected) ?? all[0];
   room.hostId = next ? next.id : null;
+}
+
+function cancelHostWacht(room) {
+  if (room.hostTimer) { clearTimeout(room.hostTimer); room.hostTimer = null; }
+}
+
+/**
+ * Der Host ist weg. Sein Zeichen wandert erst nach `HOST_GRACE_MS` weiter –
+ * vorher gilt er als jemand, der kurz aufs Klo ist. Ist er vorher zurueck, hat
+ * der Tisch nichts gemerkt. Nach jeder Aenderung an den Plaetzen einmal
+ * aufrufen: die Uhr stellt sich selbst ab, sobald der Host wieder da ist.
+ */
+function hostWacht(room) {
+  const host = room.players.get(room.hostId);
+  if (host?.connected) { cancelHostWacht(room); return; }
+  if (room.hostTimer) return;
+  room.hostTimer = setTimeout(() => {
+    room.hostTimer = null;
+    if (room.players.get(room.hostId)?.connected) return;
+    const naechster = anwesende(room)[0];
+    // Niemand da, der uebernehmen koennte: das Zeichen bleibt liegen, wo es
+    // ist. Der Naechste, der hereinkommt, startet die Uhr erneut.
+    if (!naechster) return;
+    room.hostId = naechster.id;
+    pushState(room);
+    pushRoomList();
+  }, HOST_GRACE_MS);
 }
 
 const anwesende = (room) => [...room.players.values()].filter((p) => p.connected);
@@ -188,7 +242,6 @@ function roomState(room) {
     isPublic: room.isPublic,
     phase: room.phase,
     hostId: room.hostId,
-    settings: room.settings,
     players: publicPlayers(room),
     rundeNr: room.rundeNr,
     maxPlayers: MAX_PLAYERS,
@@ -227,10 +280,17 @@ function pushRoomList() {
 // Spielablauf
 // ---------------------------------------------------------------------------
 
+/** Einer aus der Liste, moeglichst nicht derselbe wie beim letzten Mal. */
+function zieheJemanden(leute, ausser) {
+  const wahl = leute.length > 1 ? leute.filter((p) => p.id !== ausser) : leute;
+  return wahl[Math.floor(Math.random() * wahl.length)];
+}
+
 /**
  * Eine Runde austeilen. Das ist der ganze Spielteil: ein Wort fuer alle, einer
- * bekommt es nicht. Danach passiert auf dem Server nichts mehr, bis der Host
- * aufloest oder neu austeilt – dazwischen redet der Tisch.
+ * bekommt es nicht, und dazu die Ansage, wer anfaengt und wie herum es geht.
+ * Danach passiert auf dem Server nichts mehr, bis der Host aufloest oder neu
+ * austeilt – dazwischen redet der Tisch.
  */
 function neueRunde(room) {
   const da = anwesende(room);
@@ -242,35 +302,34 @@ function neueRunde(room) {
     return;
   }
 
-  const { gruppe, begriffe, begriff } = zieheBegriff(room.letzteGruppe);
+  const { gruppe, begriff } = zieheBegriff(room.letzteGruppe);
   room.letzteGruppe = gruppe;
-
-  // Ein Wort aus derselben Gruppe, das **nicht** das gesuchte ist. Einmal pro
-  // Runde gezogen und gemerkt: waere es bei jedem Senden neu, bekaeme der
-  // Imposter bei jedem Zustandswechsel ein anderes zu sehen.
-  const andere = begriffe.filter((w) => w !== begriff);
-  const hilfswort = andere.length
-    ? andere[Math.floor(Math.random() * andere.length)]
-    : null;
 
   // Nicht zweimal hintereinander dieselbe Person – sonst hoert die Runde auf,
   // ueberhaupt zu verdaechtigen, sobald es einmal jemanden erwischt hat.
-  const kandidaten = da.length > 1
-    ? da.filter((p) => p.id !== room.letzterImposter)
-    : da;
-  const imposter = kandidaten[Math.floor(Math.random() * kandidaten.length)];
+  const imposter = zieheJemanden(da, room.letzterImposter);
   room.letzterImposter = imposter.id;
+
+  // Wer anfaengt und wie herum es geht. Winzig, aber ohne die Ansage faengt
+  // jede Runde mit derselben Diskussion an – und wer zuerst reden muss, hat es
+  // am schwersten, das soll nicht immer denselben treffen.
+  const starter = zieheJemanden(da, room.letzterStarter);
+  room.letzterStarter = starter.id;
+  const richtung = Math.random() < 0.5 ? "links" : "rechts";
 
   room.rundeNr++;
   room.phase = "runde";
   room.aktuell = {
     gruppe,
     begriff,
-    hilfswort,
     imposterId: imposter.id,
-    // Wer beim Austeilen da war. Wer spaeter dazukommt, bekommt kein Wort
-    // mehr – sonst haette der Tisch mitten im Reden einen zweiten Mitwisser.
-    dabei: new Set(da.map((p) => p.id)),
+    starterId: starter.id,
+    richtung,
+    // Alle Plaetze des Raums, nicht nur die gerade verbundenen: wessen Handy
+    // beim Austeilen zufaellig aus war, der findet seine Karte vor, wenn er
+    // wieder hinsieht. Nur wer *spaeter* dazukommt, bekommt kein Wort mehr –
+    // sonst haette der Tisch mitten im Reden einen zweiten Mitwisser.
+    dabei: new Set(room.players.keys()),
     aufgedeckt: false,
   };
   // Erst die Karten, dann der Raumzustand: der Client zeichnet den
@@ -283,21 +342,29 @@ function neueRunde(room) {
 
 /**
  * Die Karte geht an jeden einzeln – und das ist hier kein Detail, sondern das
- * ganze Spiel: `begriff` nur an alle **ausser** den Imposter, `hilfswort` nur
- * an ihn.
+ * ganze Spiel: `begriff` geht an alle **ausser** den Imposter, und der Imposter
+ * bekommt nichts als die Nachricht, dass er es ist.
  */
 function karteFuer(room, p) {
   const cur = room.aktuell;
   const dabei = cur.dabei.has(p.id);
   const binImposter = dabei && p.id === cur.imposterId;
   const imposter = room.players.get(cur.imposterId);
+  const starter = room.players.get(cur.starterId);
   return {
     t: "karte",
     n: room.rundeNr,
     dabei,
     binImposter,
     begriff: dabei && !binImposter ? cur.begriff : null,
-    hilfswort: binImposter && room.settings.hilfswort ? cur.hilfswort : null,
+    // Kein Geheimnis: die Ansage ist fuer alle dieselbe und steht offen auf
+    // dem Bildschirm, auch waehrend die Karte noch zugedeckt ist.
+    ansage: {
+      starterId: cur.starterId,
+      starterName: starter?.name ?? "?",
+      binStarter: p.id === cur.starterId,
+      richtung: cur.richtung,
+    },
     aufgedeckt: cur.aufgedeckt,
     // Erst beim Aufloesen erfaehrt der Bildschirm, wer es war und wie das Wort
     // hiess. Vorher ist beides nie beim Client angekommen.
@@ -331,6 +398,7 @@ function backToLobby(room) {
   room.rundeNr = 0;
   room.letzteGruppe = null;
   room.letzterImposter = null;
+  room.letzterStarter = null;
   pushState(room);
   pushRoomList();
 }
@@ -349,6 +417,9 @@ function attach(ws, room, player) {
   player.connected = true;
   player.lastSeen = Date.now();
   ensureHost(room);
+  // Ist der Host zurueck, stellt das die Uhr ab; ist er weiterhin weg und nun
+  // jemand anders da, faengt sie an zu laufen.
+  hostWacht(room);
   send(player, {
     t: "joined",
     you: player.id,
@@ -421,6 +492,15 @@ function handle(ws, msg) {
       }
     }
 
+    // Plaetze bleiben lange reserviert. Damit ein Raum daran nicht erstickt,
+    // raeumt ein Neuling den am laengsten verwaisten Platz ab – aber erst,
+    // wenn es sonst wirklich keinen freien mehr gibt.
+    if (r.players.size >= MAX_PLAYERS) {
+      const verwaist = [...r.players.values()]
+        .filter((p) => !p.connected)
+        .sort((a, b) => (a.lastSeen ?? 0) - (b.lastSeen ?? 0))[0];
+      if (verwaist) releaseSeat(r, verwaist.id);
+    }
     if (r.players.size >= MAX_PLAYERS) {
       return raw(ws, { t: "error", msg: `Der Raum ist voll (${MAX_PLAYERS} Spieler)` });
     }
@@ -441,9 +521,10 @@ function handle(ws, msg) {
       if (room.aktuell) pushKarten(room);
       break;
 
+    // Einzustellen gibt es genau eine Sache: ob der Raum in der Liste steht.
+    // Das Hilfswort ist am 19.08.2026 ersatzlos geflogen – siehe README.
     case "settings": {
       if (player.id !== room.hostId || room.phase !== "lobby") break;
-      if (typeof msg.hilfswort === "boolean") room.settings.hilfswort = msg.hilfswort;
       if (typeof msg.isPublic === "boolean") room.isPublic = msg.isPublic;
       pushState(room);
       pushRoomList();
@@ -495,8 +576,14 @@ function dropPlayer(ws, { immediate = false } = {}) {
 
   player.connected = false;
   player.ws = null;
+  player.lastSeen = Date.now();
 
-  if (immediate || room.phase === "lobby") {
+  // Endgueltig geht nur, wer selbst auf „Verlassen" getippt hat. Alles andere
+  // – gesperrter Bildschirm, weggewischter Tab, Funkloch, leerer Akku – ist
+  // eine Pause, und eine Pause kostet den Platz nicht. Frueher gab der
+  // Warteraum ihn sofort frei; wer wiederkam, sass auf einem neuen Platz und
+  // der Host womoeglich woanders.
+  if (immediate) {
     releaseSeat(room, player.id);
     return;
   }
@@ -504,7 +591,10 @@ function dropPlayer(ws, { immediate = false } = {}) {
   if (player.dropTimer) clearTimeout(player.dropTimer);
   player.dropTimer = setTimeout(() => releaseSeat(room, player.id), SEAT_GRACE_MS);
 
-  ensureHost(room);
+  hostWacht(room);
+  // Ist niemand mehr da, faengt die Uhr des leeren Raums an zu laufen. Sie
+  // wird von `attach` wieder abgeraeumt, sobald der Erste zurueck ist.
+  if (!anwesende(room).length) scheduleIdleClose(room);
   pushState(room);
   pushRoomList();
 }
@@ -528,6 +618,16 @@ function ohneIhnWeiter(room, id) {
     return;
   }
   cur.dabei.delete(id);
+  // War es der Angesagte, bekommt die Runde einen neuen Anfang – sonst stuende
+  // dort der Name von jemandem, der gar nicht mehr am Tisch sitzt.
+  if (cur.starterId === id) {
+    const da = anwesende(room);
+    if (da.length) {
+      const neu = zieheJemanden(da, null);
+      cur.starterId = neu.id;
+      room.letzterStarter = neu.id;
+    }
+  }
   pushKarten(room);
 }
 
@@ -537,6 +637,7 @@ function releaseSeat(room, id) {
   if (player.dropTimer) { clearTimeout(player.dropTimer); player.dropTimer = null; }
   room.players.delete(id);
   ensureHost(room);
+  hostWacht(room);
 
   if (room.players.size === 0) {
     backToLobby(room);
@@ -635,12 +736,21 @@ Deno.serve({ port: PORT, hostname: HOST }, (req, info) => {
   return serveStatic(url.pathname);
 });
 
+// Sicherheitsnetz gegen liegengebliebene Raeume – etwa wenn ein Timer beim
+// Neustart des Dienstes verlorenging. Es darf niemandem den Platz wegnehmen,
+// deshalb die grosszuegige Grenze: erst wenn selbst ein reservierter Platz
+// laengst abgelaufen waere, ist der Raum wirklich tot.
+const RAUM_TOT_MS = ROOM_IDLE_MS + SEAT_GRACE_MS;
+
 setInterval(() => {
-  const now = Date.now();
-  for (const room of rooms.values()) {
-    if (!anwesende(room).length && now - room.lastActivity > 10 * 60_000) {
-      destroyRoom(room);
-    }
+  const jetzt = Date.now();
+  for (const room of [...rooms.values()]) {
+    if (anwesende(room).length) continue;
+    const zuletzt = Math.max(
+      room.lastActivity ?? 0,
+      ...[...room.players.values()].map((p) => p.lastSeen ?? 0),
+    );
+    if (jetzt - zuletzt > RAUM_TOT_MS) destroyRoom(room);
   }
 }, 60_000);
 
