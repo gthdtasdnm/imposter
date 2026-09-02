@@ -2,6 +2,13 @@
 // Spielbildschirm zeigt ein Wort und sonst nichts, und nur der Host hat
 // überhaupt einen Knopf.
 
+import { starteSprache, t, uebersetze } from "./sprache.js";
+import { WOERTER } from "./texte.js";
+
+// Vor allem, was zeichnet: der Warteraum soll gleich in der richtigen
+// Sprache dastehen. Deutsch steht im HTML und in den Aufrufen hier.
+starteSprache(WOERTER);
+
 const $ = (id) => document.getElementById(id);
 
 // Sitzplatz-Tierchen. Gleiche Liste und gleiche Ableitung wie in den anderen
@@ -26,6 +33,9 @@ const ART_TEXT = {
   klassisch: "Klassisch – einer kennt das Wort nicht",
   blind: "Zwei Wörter – niemand weiß, wer abweicht",
 };
+const artText = (a) => t("imp.art." + a, {}, ART_TEXT[a] ?? "");
+
+const artHint = (a) => t("imp.artHint." + a, {}, ART_HINT[a] ?? "");
 
 const ART_HINT = {
   klassisch: "Alle bekommen dasselbe Wort – einer keins, und der weiß es.",
@@ -153,7 +163,7 @@ function connect() {
     // halben Sekunde geheilt, und eine Warnung, die bei jedem Wimpernschlag
     // aufblinkt, liest irgendwann niemand mehr.
     clearTimeout(meldeUhr);
-    meldeUhr = setTimeout(() => setStatus("Verbindung weg – neuer Versuch …"), 1500);
+    meldeUhr = setTimeout(() => setStatus(t("c.weg", {}, "Verbindung weg – neuer Versuch …")), 1500);
     clearTimeout(wiederUhr);
     wiederUhr = setTimeout(connect, retryIn);
     retryIn = Math.min(retryIn * 1.8, 8000);
@@ -276,13 +286,11 @@ function mitAb18(typ, ab18, dann, sonst) {
   if (!ab18 || ab18Bestaetigt()) return dann();
   state.gate = { dann, sonst };
   $("ab18Text").textContent = typ === "beitritt"
-    ? "In diesem Raum sind die Wörter ab 18 eingestellt: es geht um Sex, " +
-      "Körper und Rausch. Nur bleiben, wenn du volljährig bist und Lust " +
-      "darauf hast."
-    : "In diesem Stapel geht es um Sex, Körper und Rausch – die Paare sind " +
-      "mit Absicht derb. Nur weiterspielen, wenn alle am Tisch volljährig " +
-      "sind und Lust darauf haben.";
-  $("ab18Nein").textContent = typ === "beitritt" ? "Raum verlassen" : "Lieber harmlos";
+    ? t("imp.ab18Beitritt", {}, "In diesem Raum sind die Wörter ab 18 eingestellt: es geht um Sex, Körper und Rausch. Nur bleiben, wenn du volljährig bist und Lust darauf hast.")
+    : t("imp.ab18Wahl", {}, "In diesem Stapel geht es um Sex, Körper und Rausch – die Paare sind mit Absicht derb. Nur weiterspielen, wenn alle am Tisch volljährig sind und Lust darauf haben.");
+  $("ab18Nein").textContent = typ === "beitritt"
+    ? t("imp.raumVerlassen", {}, "Raum verlassen")
+    : t("imp.lieberHarmlos", {}, "Lieber harmlos");
   $("ab18Gate").hidden = false;
 }
 
@@ -311,15 +319,22 @@ function renderRooms(list) {
   const box = $("roomList");
   $("roomsCount").textContent = list.length ? `(${list.length})` : "";
   if (!list.length) {
-    box.innerHTML = `<p class="rooms-empty">Gerade ist kein Raum offen.
-      Eröffne einen – er erscheint dann bei den anderen in der Liste.</p>`;
+    box.innerHTML = `<p class="rooms-empty">${
+      t("c.keinRaum", {}, "Gerade ist kein Raum offen. Eröffne einen – er erscheint dann bei den anderen in der Liste.")
+    }</p>`;
     return;
   }
   box.innerHTML = list.map((r) => `
     <button class="roomrow${r.ab18 ? " rot" : ""}" data-code="${escapeHtml(r.code)}"
             data-ab18="${r.ab18 ? "ja" : "nein"}">
       <span class="roomrow-name">${escapeHtml(r.host)}</span>
-      <span class="roomrow-meta">${r.ab18 ? "18+" : r.art === "blind" ? "Zwei Wörter" : `ab ${r.min}`}</span>
+      <span class="roomrow-meta">${
+      r.ab18
+        ? "18+"
+        : r.art === "blind"
+        ? t("imp.zweiWoerter", {}, "Zwei Wörter")
+        : t("imp.abN", { n: r.min }, `ab ${r.min}`)
+    }</span>
       <span class="roomrow-count">${r.count}/${r.max}</span>
     </button>`).join("");
 
@@ -379,7 +394,7 @@ function setArt(a) {
   for (const b of document.querySelectorAll("[data-art]")) {
     b.classList.toggle("sel", b.dataset.art === a);
   }
-  $("artHint").textContent = ART_HINT[a];
+  $("artHint").textContent = artHint(a);
   $("stapelZeile").hidden = a !== "blind";
 }
 
@@ -422,7 +437,7 @@ $("createBtn").addEventListener("click", () => {
 
 $("joinBtn").addEventListener("click", () => {
   const code = $("codeInput").value.toUpperCase().trim();
-  if (code.length < 3) return toast("Bitte den vierstelligen Code eingeben");
+  if (code.length < 3) return toast(t("c.codeBitte", {}, "Bitte den vierstelligen Code eingeben"));
   joinCode(code);
 });
 
@@ -459,8 +474,8 @@ function renderRoom() {
   const da = r.players.filter((p) => p.connected).length;
   $("lobbyCount").textContent = `${da}/${r.maxPlayers}`;
   $("roomVis").textContent = r.isPublic
-    ? "Öffentlich – steht in der Liste"
-    : "Privat – nur mit Code";
+    ? t("c.oeffentlich", {}, "Öffentlich – steht in der Liste")
+    : t("c.privat", {}, "Privat – nur mit Code");
 
   const list = $("playerList");
   list.textContent = "";
@@ -471,13 +486,20 @@ function renderRoom() {
     card.className = "seat" + (p ? "" : " empty") + (p && !p.connected ? " off" : "");
     if (!p) {
       card.innerHTML =
-        `<div class="av">🪑</div><div class="nm">frei</div><div class="st">wartet</div>`;
+        `<div class="av">🪑</div><div class="nm">${t("c.frei", {}, "frei")}</div>` +
+        `<div class="st">${t("c.wartet", {}, "wartet")}</div>`;
     } else {
       card.innerHTML = `
         <div class="av">${avatarFor(p.id)}</div>
-        <div class="nm">${escapeHtml(p.name)}${p.id === state.you ? " (du)" : ""}</div>
-        <div class="st">${!p.connected ? "kommt wieder" : p.host ? "teilt aus" : "dabei"}</div>
-        ${p.host ? '<div class="host">HOST</div>' : ""}`;
+        <div class="nm">${escapeHtml(p.name)}${p.id === state.you ? t("c.du", {}, " (du)") : ""}</div>
+        <div class="st">${
+          !p.connected
+            ? t("c.kommtWieder", {}, "kommt wieder")
+            : p.host
+            ? t("c.teiltAus", {}, "teilt aus")
+            : t("c.dabei", {}, "dabei")
+        }</div>
+        ${p.host ? `<div class="host">${t("c.host", {}, "HOST")}</div>` : ""}`;
     }
     list.append(card);
   }
@@ -497,14 +519,15 @@ function renderRoom() {
   }
   $("lobbyStapelZeile").hidden = r.art !== "blind";
   // Steht auch für die Gäste da: sonst wüsste nur der Host, was gleich kommt.
-  $("lobbyArt").textContent = ART_TEXT[r.art] + (r.ab18 ? " · Wörter ab 18" : "");
+  $("lobbyArt").textContent = artText(r.art) +
+    (r.ab18 ? " · " + t("imp.woerterAb18", {}, "Wörter ab 18") : "");
 
   // Wer gerade weg ist, zählt nicht mit – sonst blockiert er den Start.
   const here = r.players.filter((p) => p.connected).length;
   $("startBtn").disabled = here < r.minPlayers;
   $("startHint").textContent = here < r.minPlayers
-    ? `Ab ${r.minPlayers} geht es los.`
-    : "Wenn alle das Handy vor sich haben: austeilen.";
+    ? t("c.abGehtLos", { n: r.minPlayers }, `Ab ${r.minPlayers} geht es los.`)
+    : t("imp.wennAlle", {}, "Wenn alle das Handy vor sich haben: austeilen.");
 }
 
 $("startBtn").addEventListener("click", () => send({ t: "start" }));
@@ -542,7 +565,7 @@ $("copyBtn").addEventListener("click", async () => {
   const link = location.origin + location.pathname + "#" + (state.code ?? "");
   try {
     await navigator.clipboard.writeText(link);
-    toast("Link kopiert");
+    toast(t("schale.kopiert", {}, "Link kopiert"));
   } catch {
     // Ohne Zwischenablage (http, altes Handy) bleibt nur Vorlesen.
     toast(link);
@@ -662,12 +685,16 @@ function renderAnsage(k) {
   const a = k.ansage;
   if (!a || !k.dabei) { el.hidden = true; return; }
   const wer = a.binStarter
-    ? "<b>Du</b> fängst an"
-    : `<b>${escapeHtml(a.starterName)}</b> fängt an`;
+    ? t("imp.duFaengstAn", {}, "<b>Du</b> fängst an")
+    : t("imp.faengtAn", { name: `<b>${escapeHtml(a.starterName)}</b>` },
+      `<b>${escapeHtml(a.starterName)}</b> fängt an`);
   const pfeil = a.richtung === "links" ? "←" : "→";
+  const richtung = t("imp.richtung." + a.richtung, {}, a.richtung);
   el.innerHTML = `${wer}
     <span class="ansage-richtung">
-      <span class="ansage-pfeil">${pfeil}</span> dann reihum nach ${escapeHtml(a.richtung)}
+      <span class="ansage-pfeil">${pfeil}</span> ${
+    t("imp.reihumNach", { richtung: escapeHtml(richtung) }, `dann reihum nach ${escapeHtml(richtung)}`)
+  }
     </span>`;
   el.hidden = false;
 }
@@ -689,7 +716,7 @@ function renderKarte() {
   const blind = k.art === "blind";
   $("rundeNo").textContent = String(k.n);
   $("endeBtn").hidden = !isHost;
-  $("artTag").textContent = blind ? "Zwei Wörter" : "";
+  $("artTag").textContent = blind ? t("imp.zweiWoerter", {}, "Zwei Wörter") : "";
 
   // Neue Runde oder gerade aufgelöst: der Deckel fängt von vorne an.
   const marke = `${k.n}/${k.aufgedeckt}/${k.dabei}`;
@@ -713,36 +740,44 @@ function renderKarte() {
     if (blind) {
       // In dieser Art ist die Auflösung die Pointe: erst jetzt erfährt der
       // Tisch, dass überhaupt zwei Wörter im Spiel waren – und welches.
-      $("karteKopf").textContent = "Fast alle hatten";
+      $("karteKopf").textContent = t("imp.fastAlle", {}, "Fast alle hatten");
       $("karteWort").textContent = e.begriff;
       auf.hidden = false;
       auf.innerHTML = `<span class="auf-av">${avatarFor(e.imposterId)}</span>
         <p class="auf-wer">${
         ichWars
-          ? "<b>Du</b> hattest ein anderes Wort:"
-          : `<b>${escapeHtml(e.imposterName)}</b> hatte ein anderes Wort:`
+          ? t("imp.duHattest", {}, "<b>Du</b> hattest ein anderes Wort:")
+          : t("imp.hatteAnderes", { name: `<b>${escapeHtml(e.imposterName)}</b>` },
+            `<b>${escapeHtml(e.imposterName)}</b> hatte ein anderes Wort:`)
       }</p>
         <p class="auf-wort">${escapeHtml(e.sonderwort ?? "")}</p>`;
     } else {
-      $("karteKopf").textContent = "Das Wort war";
+      $("karteKopf").textContent = t("imp.dasWortWar", {}, "Das Wort war");
       $("karteWort").textContent = e.begriff;
       auf.hidden = false;
       auf.innerHTML = `<span class="auf-av">${avatarFor(e.imposterId)}</span>
-        <p class="auf-wer"><b>${escapeHtml(e.imposterName)}</b> war der Imposter.</p>
-        <p class="auf-klein">Gruppe: ${escapeHtml(e.gruppe)}</p>`;
+        <p class="auf-wer">${
+        t("imp.warDerImposter", { name: `<b>${escapeHtml(e.imposterName)}</b>` },
+          `<b>${escapeHtml(e.imposterName)}</b> war der Imposter.`)
+      }</p>
+        <p class="auf-klein">${
+        t("imp.gruppe", { gruppe: escapeHtml(e.gruppe) }, `Gruppe: ${escapeHtml(e.gruppe)}`)
+      }</p>`;
     }
   } else if (!k.dabei) {
     // Mitten in die laufende Runde gekommen: kein Wort, sonst hätte der Tisch
     // unbemerkt einen zweiten Mitwisser.
     karte.classList.remove("imposter");
-    $("karteKopf").textContent = "Du bist im Raum";
+    $("karteKopf").textContent = t("imp.imRaum", {}, "Du bist im Raum");
     $("karteWort").textContent = "⏳";
     auf.hidden = false;
     auf.innerHTML =
-      `<p class="auf-klein">Diese Runde läuft schon. Beim nächsten Austeilen bist du dabei.</p>`;
+      `<p class="auf-klein">${
+        t("imp.laeuftSchon", {}, "Diese Runde läuft schon. Beim nächsten Austeilen bist du dabei.")
+      }</p>`;
   } else if (k.binImposter) {
     karte.classList.add("imposter");
-    $("karteKopf").textContent = "Du bist der";
+    $("karteKopf").textContent = t("imp.duBistDer", {}, "Du bist der");
     $("karteWort").textContent = "IMPOSTER";
   } else {
     // Auch der Abweichler landet hier: er sieht sein Wort wie alle anderen und
@@ -750,7 +785,7 @@ function renderKarte() {
     // ist der Sinn der blinden Art – der Client bekommt die Wahrheit nicht,
     // also kann er sie auch nicht verraten.
     karte.classList.remove("imposter");
-    $("karteKopf").textContent = "Dein Wort";
+    $("karteKopf").textContent = t("imp.deinWort", {}, "Dein Wort");
     $("karteWort").textContent = k.begriff ?? "";
   }
 
@@ -760,15 +795,17 @@ function renderKarte() {
   let hint = "";
   if (isHost) {
     if (k.aufgedeckt) {
-      box.append(knopf("Nächste Runde", "primary big", () => send({ t: "neu" })));
+      box.append(knopf(t("imp.naechsteRunde", {}, "Nächste Runde"), "primary big",
+        () => send({ t: "neu" })));
     } else {
-      box.append(knopf("Auflösen", "primary big", () => send({ t: "aufloesen" })));
+      box.append(knopf(t("imp.aufloesen", {}, "Auflösen"), "primary big",
+        () => send({ t: "aufloesen" })));
       hint = blind
-        ? "Erst reden. Auflösen zeigt, wer das andere Wort hatte."
-        : "Erst reden. Auflösen zeigt allen, wer es war.";
+        ? t("imp.erstRedenBlind", {}, "Erst reden. Auflösen zeigt, wer das andere Wort hatte.")
+        : t("imp.erstReden", {}, "Erst reden. Auflösen zeigt allen, wer es war.");
     }
   } else if (k.aufgedeckt) {
-    hint = "Der Host teilt gleich neu aus.";
+    hint = t("imp.teiltNeuAus", {}, "Der Host teilt gleich neu aus.");
   }
   $("rundenHint").textContent = hint;
 }
