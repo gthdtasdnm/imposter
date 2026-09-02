@@ -4,6 +4,9 @@ Alle bekommen dasselbe Wort – bis auf einen. Reihum sagt jeder laut ein Wort
 dazu; wer zu deutlich wird, verrät das Wort, wer zu vage bleibt, wird selbst
 verdächtigt. Am Ende zeigt ihr aufeinander.
 
+Seit dem 02.09.2026 gibt es das Ganze in **zwei Arten** – siehe unten: in der
+zweiten weiß auch der Imposter nicht, dass er einer ist.
+
 **Das Handy teilt nur Karten aus.** Es gibt keine Hinweisschritte, keine
 Abstimmung und keine Punkte – all das macht der Tisch unter sich aus. Der
 Bildschirm zeigt eine zugedeckte Karte und darüber einen Satz: wer anfängt und
@@ -26,6 +29,66 @@ deno task probe        # teilt mit fünf Clients aus und prüft die Geheimhaltun
 Zum Ausprobieren allein: die Seite in **mehreren Browserfenstern** öffnen. Jedes
 Fenster ist ein eigener Spieler (die Sitzung hängt am `sessionStorage`, ein
 zweiter Tab im selben Fenster wäre dieselbe Person).
+
+## Zwei Arten
+
+Der Host stellt sie im Warteraum ein, gewechselt wird nur dort.
+
+| | **Klassisch** | **Zwei Wörter** |
+|---|---|---|
+| Wer bekommt ein Wort | alle außer einem | **jeder** |
+| Was der Imposter weiß | dass er es ist | **nichts** |
+| Woher die Wörter | `begriffe.js` (Gruppe + Begriff) | `paare.js` (ein Wortpaar) |
+| Was aufgelöst wird | wer es war, wie das Wort hieß | wer ein anderes Wort hatte, und welches |
+
+**Zwei Wörter** dreht den Kniff um. Jeder bekommt ein Wort, aber eines davon ist
+ein anderes: die einen haben *Museum*, einer hat *Bordell*. Niemand weiß, wer
+abweicht – **auch der Abweichler nicht**. Alle reden also in gutem Glauben, und
+es dauert ein paar Runden, bis jemand merkt, dass da etwas nicht zusammenpasst.
+Der Reiz liegt darin, dass niemand schauspielert: es gibt keinen, der lügt.
+
+### Was ein gutes Paar ausmacht
+
+**Nicht** zwei Wörter aus derselben Schublade. Kajak und Kanu wären das
+Langweiligste: dort passt jeder Satz auf beides, und es fällt nie etwas auf.
+
+Gesucht ist das Gegenteil – zwei Wörter, deren **Bedeutung weit auseinander
+liegt**, deren **Beschreibungen sich aber decken**. Museum und Bordell: man geht
+hinein, zahlt Eintritt, sieht sich um, fasst besser nichts an, trifft Menschen,
+sieht nackte Frauen. Jeder Satz stimmt für beide – und genau deshalb ist es
+komisch, wenn am Ende herauskommt, wer woran gedacht hat.
+
+Die Prüffrage für ein neues Paar: **Kann man fünf Sätze sagen, die auf beide
+passen, und ist der Abstand trotzdem albern?**
+
+Welche Seite die Mehrheit bekommt, wird **jede Runde ausgelost**. Läge das
+harmlosere Wort immer bei der Mehrheit, wüsste jeder mit dem schrägen Wort
+sofort, dass er der Abweichler ist – und das ganze Spiel wäre hin. `probe.js`
+misst über 400 Züge nach, dass beide Seiten drankommen.
+
+### Harmlos und 18+
+
+Zwei getrennte Stapel in `paare.js`, und die Trennung ist streng:
+
+* **Harmlos** ist die Voreinstellung – ohne Sex, Rausch und Körperliches. Der
+  Witz liegt allein im Abstand (Hochzeit/Beerdigung, Katze/Chef,
+  Sandkasten/Baustelle).
+* **18+** geht genau dorthin, wo man es erwartet. Der Stapel wird **nie**
+  untergemischt: er kommt nur in einen Raum, dessen Host ihn ausdrücklich
+  eingestellt hat, und jedes Gerät fragt einmal nach – beim Einschalten **und**
+  beim Beitritt in einen Raum, der schon so steht. Der zweite Fall ist der
+  wichtigere: dort hat man die Entscheidung nicht selbst getroffen. Bestätigt
+  wird im `localStorage` unter `imposter_ab18`.
+* Die **klassische Art** fasst `paare.js` gar nicht erst an. Auch wenn „derb"
+  noch eingestellt ist, kommt dort nichts davon vor.
+
+Im Paar steht links immer das unverfängliche und rechts das anstößige Wort.
+Das ist eine Zusage, keine Beschreibung: `probe.js` prüft, dass **kein** Wort
+der rechten Spalte je in einem harmlosen Raum oder in der klassischen Art
+auftaucht – und dass es auch nicht im harmlosen Stapel oder in `begriffe.js`
+steht. Die linke Spalte darf sich überschneiden (Sauna, Museum, Angeln).
+
+Gleiches Muster wie bei `/nochnie/` und `/amehesten/`, siehe `doku/inhalte.md`.
 
 ## An den Tisch kommen
 
@@ -97,7 +160,13 @@ zweiten Mitwisser.
 
 ## Was der Imposter sieht
 
-Nur, dass er es ist. Kein Wort, keine Gruppe, keine Wortliste.
+In der klassischen Art: nur, dass er es ist. Kein Wort, keine Gruppe, keine
+Wortliste.
+
+In der Art **Zwei Wörter** sieht er *sein Wort* – und sonst nichts. `binImposter`
+kommt dort bei niemandem an, auch nicht als `false` bei den anderen: stünde der
+Wert auch nur an einer Stelle, ließe er sich am eigenen Gerät ablesen. Was der
+Client nicht bekommt, kann er nicht verraten.
 
 Bis zum 19.08.2026 gab es dazu ein **Hilfswort**: ein einzelnes Wort aus
 derselben Gruppe, nie das gesuchte. Es ist ersatzlos geflogen. Es war entweder
@@ -133,6 +202,11 @@ angekommen.
 `probe.js` prüft genau das mit fünf echten Verbindungen: nach dem Austeilen muss
 **genau ein** Client `binImposter` haben, und in seiner ganzen Karte darf das
 gesuchte Wort an keiner Stelle vorkommen.
+
+Für die Art **Zwei Wörter** gilt dasselbe in beide Richtungen: vier weitere
+Clients teilen aus, und in keiner Karte darf das jeweils *andere* Wort stehen –
+weder bei der Mehrheit das des Abweichlers noch umgekehrt. Geprüft wird gegen
+den rohen Nachrichtentext, nicht gegen einzelne Felder.
 
 ## Ein Imposter, nicht zwei
 
@@ -177,9 +251,10 @@ weiterspielen, wiederkommen, vergleichen.
 | Datei | Was |
 |---|---|
 | `server.js` | statische Dateien, WebSocket, Räume, Kartenausgabe |
-| `begriffe.js` | die zwölf Begriffsgruppen |
+| `begriffe.js` | die zwölf Begriffsgruppen der klassischen Art |
+| `paare.js` | die Wortpaare der blinden Art, harmlos und 18+ streng getrennt |
 | `bremse.js` | gemeinsames Rate-Limiting, **wortgleich in allen Spielen** |
-| `probe.js` | teilt mit fünf Clients aus, prüft Geheimhaltung, Ansage und Plätze |
+| `probe.js` | teilt mit fünf bzw. vier Clients aus, prüft Geheimhaltung, Ansage, Plätze und die Trennung der Stapel |
 | `public/index.html` | drei Bildschirme plus die Hilfe |
 | `public/style.css` | oben der gemeinsame Lobby-Block, darunter das Eigene |
 | `public/app.js` | Verbindung, Warteraum, Karte, Auflösung |

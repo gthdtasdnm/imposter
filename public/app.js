@@ -17,6 +17,20 @@ const state = {
   karte: null,
   pendingIntent: null,
   visibility: "public",
+  art: "klassisch",
+  stapel: "harmlos",
+  gate: null,        // offene 18+-Abfrage: { dann, sonst }
+};
+
+const ART_TEXT = {
+  klassisch: "Klassisch – einer kennt das Wort nicht",
+  blind: "Zwei Wörter – niemand weiß, wer abweicht",
+};
+
+const ART_HINT = {
+  klassisch: "Alle bekommen dasselbe Wort – einer keins, und der weiß es.",
+  blind: "Jeder bekommt ein Wort. Eines ist ein anderes – und der, den es " +
+    "trifft, weiß es selbst nicht.",
 };
 
 // ---------------------------------------------------------------------------
@@ -240,6 +254,56 @@ function onMessage(msg) {
 }
 
 // ---------------------------------------------------------------------------
+// 18+
+// ---------------------------------------------------------------------------
+//
+// Gleiche Regel wie bei „Ich hab noch nie" und „Wer am ehesten": eine Abfrage
+// vor dem Einschalten **und** eine vor dem Beitritt in einen Raum, der schon so
+// eingestellt ist. Der zweite Fall ist der wichtigere – dort hat man die
+// Entscheidung nicht selbst getroffen. Bestätigt wird einmal je Gerät.
+const AB18_KEY = "imposter_ab18";
+
+const ab18Bestaetigt = () => {
+  try {
+    return localStorage.getItem(AB18_KEY) === "ja";
+  } catch {
+    return false;
+  }
+};
+
+/** `dann` läuft, sobald es entweder harmlos ist oder bestätigt wurde. */
+function mitAb18(typ, ab18, dann, sonst) {
+  if (!ab18 || ab18Bestaetigt()) return dann();
+  state.gate = { dann, sonst };
+  $("ab18Text").textContent = typ === "beitritt"
+    ? "In diesem Raum sind die Wörter ab 18 eingestellt: es geht um Sex, " +
+      "Körper und Rausch. Nur bleiben, wenn du volljährig bist und Lust " +
+      "darauf hast."
+    : "In diesem Stapel geht es um Sex, Körper und Rausch – die Paare sind " +
+      "mit Absicht derb. Nur weiterspielen, wenn alle am Tisch volljährig " +
+      "sind und Lust darauf haben.";
+  $("ab18Nein").textContent = typ === "beitritt" ? "Raum verlassen" : "Lieber harmlos";
+  $("ab18Gate").hidden = false;
+}
+
+$("ab18Ja").addEventListener("click", () => {
+  try {
+    localStorage.setItem(AB18_KEY, "ja");
+  } catch { /* Privatmodus – dann fragt es beim nächsten Mal wieder */ }
+  $("ab18Gate").hidden = true;
+  const g = state.gate;
+  state.gate = null;
+  g?.dann();
+});
+
+$("ab18Nein").addEventListener("click", () => {
+  $("ab18Gate").hidden = true;
+  const g = state.gate;
+  state.gate = null;
+  g?.sonst();
+});
+
+// ---------------------------------------------------------------------------
 // Offene Räume
 // ---------------------------------------------------------------------------
 
@@ -252,14 +316,17 @@ function renderRooms(list) {
     return;
   }
   box.innerHTML = list.map((r) => `
-    <button class="roomrow" data-code="${escapeHtml(r.code)}">
+    <button class="roomrow${r.ab18 ? " rot" : ""}" data-code="${escapeHtml(r.code)}"
+            data-ab18="${r.ab18 ? "ja" : "nein"}">
       <span class="roomrow-name">${escapeHtml(r.host)}</span>
-      <span class="roomrow-meta">ab ${r.min}</span>
+      <span class="roomrow-meta">${r.ab18 ? "18+" : r.art === "blind" ? "Zwei Wörter" : `ab ${r.min}`}</span>
       <span class="roomrow-count">${r.count}/${r.max}</span>
     </button>`).join("");
 
   for (const b of box.querySelectorAll(".roomrow")) {
-    b.addEventListener("click", () => joinCode(b.dataset.code));
+    b.addEventListener("click", () => {
+      mitAb18("beitritt", b.dataset.ab18 === "ja", () => joinCode(b.dataset.code), () => {});
+    });
   }
 }
 
@@ -305,6 +372,35 @@ for (const b of document.querySelectorAll("[data-vis]")) {
   });
 }
 
+// Die Spielart – und mit ihr die Frage, ob der Stapel überhaupt zur Wahl
+// steht: in der klassischen Art kommen die Wortpaare gar nicht vor.
+function setArt(a) {
+  state.art = a;
+  for (const b of document.querySelectorAll("[data-art]")) {
+    b.classList.toggle("sel", b.dataset.art === a);
+  }
+  $("artHint").textContent = ART_HINT[a];
+  $("stapelZeile").hidden = a !== "blind";
+}
+
+for (const b of document.querySelectorAll("[data-art]")) {
+  b.addEventListener("click", () => setArt(b.dataset.art));
+}
+
+function setStapel(st) {
+  state.stapel = st;
+  for (const b of document.querySelectorAll("[data-stapel]")) {
+    b.classList.toggle("sel", b.dataset.stapel === st);
+  }
+}
+
+for (const b of document.querySelectorAll("[data-stapel]")) {
+  b.addEventListener("click", () => {
+    mitAb18("wahl", b.dataset.stapel === "derb",
+      () => setStapel(b.dataset.stapel), () => setStapel("harmlos"));
+  });
+}
+
 $("createBtn").addEventListener("click", () => {
   try {
     localStorage.setItem(NAME_KEY, meinName());
@@ -313,6 +409,10 @@ $("createBtn").addEventListener("click", () => {
     t: "create",
     name: meinName(),
     isPublic: state.visibility === "public",
+    art: state.art,
+    // Sicherheitsgurt: die derben Wörter gehen nur mit der Art mit, zu der sie
+    // gehören. Ein „derb" aus einem alten Zustand kann so nicht durchrutschen.
+    stapel: state.art === "blind" ? state.stapel : "harmlos",
   };
   if (sock?.readyState === WebSocket.OPEN) {
     send(state.pendingIntent);
@@ -348,6 +448,13 @@ function renderRoom() {
 
   show("lobby");
 
+  // Wer über einen Link in einem 18+-Raum landet, hat die Einstellung nicht
+  // selbst getroffen – deshalb fragt es hier noch einmal, unabhängig davon,
+  // wie er hereingekommen ist.
+  if (r.ab18 && !ab18Bestaetigt() && !state.gate) {
+    mitAb18("beitritt", true, () => {}, verlassen);
+  }
+
   $("roomCode").textContent = r.code;
   const da = r.players.filter((p) => p.connected).length;
   $("lobbyCount").textContent = `${da}/${r.maxPlayers}`;
@@ -382,6 +489,15 @@ function renderRoom() {
   for (const b of document.querySelectorAll("[data-lobbyvis]")) {
     b.classList.toggle("sel", (b.dataset.lobbyvis === "public") === r.isPublic);
   }
+  for (const b of document.querySelectorAll("[data-lobbyart]")) {
+    b.classList.toggle("sel", b.dataset.lobbyart === r.art);
+  }
+  for (const b of document.querySelectorAll("[data-lobbystapel]")) {
+    b.classList.toggle("sel", b.dataset.lobbystapel === r.stapel);
+  }
+  $("lobbyStapelZeile").hidden = r.art !== "blind";
+  // Steht auch für die Gäste da: sonst wüsste nur der Host, was gleich kommt.
+  $("lobbyArt").textContent = ART_TEXT[r.art] + (r.ab18 ? " · Wörter ab 18" : "");
 
   // Wer gerade weg ist, zählt nicht mit – sonst blockiert er den Start.
   const here = r.players.filter((p) => p.connected).length;
@@ -402,6 +518,24 @@ for (const b of document.querySelectorAll("[data-lobbyvis]")) {
   b.addEventListener("click", () =>
     send({ t: "settings", isPublic: b.dataset.lobbyvis === "public" })
   );
+}
+
+for (const b of document.querySelectorAll("[data-lobbyart]")) {
+  b.addEventListener("click", () => {
+    // Zurück auf die klassische Art heißt auch zurück auf den harmlosen
+    // Stapel: die Paare gehören zur blinden Art, sonst nirgendwohin.
+    const art = b.dataset.lobbyart;
+    send(art === "blind" ? { t: "settings", art } : { t: "settings", art, stapel: "harmlos" });
+  });
+}
+
+for (const b of document.querySelectorAll("[data-lobbystapel]")) {
+  b.addEventListener("click", () => {
+    const stapel = b.dataset.lobbystapel;
+    mitAb18("wahl", stapel === "derb",
+      () => send({ t: "settings", stapel }),
+      () => send({ t: "settings", stapel: "harmlos" }));
+  });
 }
 
 $("copyBtn").addEventListener("click", async () => {
@@ -552,8 +686,10 @@ function renderKarte() {
   show("game");
 
   const isHost = state.room.hostId === state.you;
+  const blind = k.art === "blind";
   $("rundeNo").textContent = String(k.n);
   $("endeBtn").hidden = !isHost;
+  $("artTag").textContent = blind ? "Zwei Wörter" : "";
 
   // Neue Runde oder gerade aufgelöst: der Deckel fängt von vorne an.
   const marke = `${k.n}/${k.aufgedeckt}/${k.dabei}`;
@@ -572,13 +708,29 @@ function renderKarte() {
 
   if (k.aufgedeckt) {
     const e = k.ergebnis;
-    karte.classList.toggle("imposter", e.imposterId === state.you);
-    $("karteKopf").textContent = "Das Wort war";
-    $("karteWort").textContent = e.begriff;
-    auf.hidden = false;
-    auf.innerHTML = `<span class="auf-av">${avatarFor(e.imposterId)}</span>
-      <p class="auf-wer"><b>${escapeHtml(e.imposterName)}</b> war der Imposter.</p>
-      <p class="auf-klein">Gruppe: ${escapeHtml(e.gruppe)}</p>`;
+    const ichWars = e.imposterId === state.you;
+    karte.classList.toggle("imposter", ichWars);
+    if (blind) {
+      // In dieser Art ist die Auflösung die Pointe: erst jetzt erfährt der
+      // Tisch, dass überhaupt zwei Wörter im Spiel waren – und welches.
+      $("karteKopf").textContent = "Fast alle hatten";
+      $("karteWort").textContent = e.begriff;
+      auf.hidden = false;
+      auf.innerHTML = `<span class="auf-av">${avatarFor(e.imposterId)}</span>
+        <p class="auf-wer">${
+        ichWars
+          ? "<b>Du</b> hattest ein anderes Wort:"
+          : `<b>${escapeHtml(e.imposterName)}</b> hatte ein anderes Wort:`
+      }</p>
+        <p class="auf-wort">${escapeHtml(e.sonderwort ?? "")}</p>`;
+    } else {
+      $("karteKopf").textContent = "Das Wort war";
+      $("karteWort").textContent = e.begriff;
+      auf.hidden = false;
+      auf.innerHTML = `<span class="auf-av">${avatarFor(e.imposterId)}</span>
+        <p class="auf-wer"><b>${escapeHtml(e.imposterName)}</b> war der Imposter.</p>
+        <p class="auf-klein">Gruppe: ${escapeHtml(e.gruppe)}</p>`;
+    }
   } else if (!k.dabei) {
     // Mitten in die laufende Runde gekommen: kein Wort, sonst hätte der Tisch
     // unbemerkt einen zweiten Mitwisser.
@@ -593,6 +745,10 @@ function renderKarte() {
     $("karteKopf").textContent = "Du bist der";
     $("karteWort").textContent = "IMPOSTER";
   } else {
+    // Auch der Abweichler landet hier: er sieht sein Wort wie alle anderen und
+    // hat keine Möglichkeit zu erkennen, dass es ein anderes ist. Genau das
+    // ist der Sinn der blinden Art – der Client bekommt die Wahrheit nicht,
+    // also kann er sie auch nicht verraten.
     karte.classList.remove("imposter");
     $("karteKopf").textContent = "Dein Wort";
     $("karteWort").textContent = k.begriff ?? "";
@@ -607,7 +763,9 @@ function renderKarte() {
       box.append(knopf("Nächste Runde", "primary big", () => send({ t: "neu" })));
     } else {
       box.append(knopf("Auflösen", "primary big", () => send({ t: "aufloesen" })));
-      hint = "Erst reden. Auflösen zeigt allen, wer es war.";
+      hint = blind
+        ? "Erst reden. Auflösen zeigt, wer das andere Wort hatte."
+        : "Erst reden. Auflösen zeigt allen, wer es war.";
     }
   } else if (k.aufgedeckt) {
     hint = "Der Host teilt gleich neu aus.";

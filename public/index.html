@@ -23,6 +23,26 @@
     <input id="name" maxlength="12" placeholder="z.&nbsp;B. Mo" autocomplete="nickname">
 
     <div class="setting">
+      <span class="setting-label">Spielart</span>
+      <div class="segmented">
+        <button class="seg sel" data-art="klassisch">Klassisch</button>
+        <button class="seg" data-art="blind">Zwei Wörter</button>
+      </div>
+    </div>
+    <p class="artzeile" id="artHint">Alle bekommen dasselbe Wort – einer keins,
+       und der weiß es.</p>
+
+    <!-- Nur für „Zwei Wörter": in der klassischen Art kommen die Paare gar
+         nicht vor, also hat der Stapel dort auch nichts einzustellen. -->
+    <div class="setting" id="stapelZeile" hidden>
+      <span class="setting-label">Wörter</span>
+      <div class="segmented">
+        <button class="seg sel" data-stapel="harmlos">Harmlos</button>
+        <button class="seg seg-rot" data-stapel="derb">18+</button>
+      </div>
+    </div>
+
+    <div class="setting">
       <span class="setting-label">Sichtbar</span>
       <div class="segmented">
         <button class="seg sel" data-vis="public">Öffentlich</button>
@@ -64,6 +84,20 @@
 
     <div id="hostControls" hidden>
       <div class="setting">
+        <span class="setting-label">Spielart</span>
+        <div class="segmented">
+          <button class="seg" data-lobbyart="klassisch">Klassisch</button>
+          <button class="seg" data-lobbyart="blind">Zwei Wörter</button>
+        </div>
+      </div>
+      <div class="setting" id="lobbyStapelZeile" hidden>
+        <span class="setting-label">Wörter</span>
+        <div class="segmented">
+          <button class="seg" data-lobbystapel="harmlos">Harmlos</button>
+          <button class="seg seg-rot" data-lobbystapel="derb">18+</button>
+        </div>
+      </div>
+      <div class="setting">
         <span class="setting-label">Sichtbar</span>
         <div class="segmented">
           <button class="seg" data-lobbyvis="public">Öffentlich</button>
@@ -80,6 +114,8 @@
       <p class="hintline">Gleich geht’s los – der Host teilt aus.</p>
     </div>
 
+    <p id="lobbyArt" class="artzeile"></p>
+
     <button id="leaveBtn" class="btn ghost small">Raum verlassen</button>
   </div>
 </section>
@@ -93,6 +129,7 @@
   <div class="game">
     <header class="topbar">
       <div class="tb-runde">Runde <strong id="rundeNo">1</strong></div>
+      <div id="artTag" class="tb-art"></div>
       <button id="endeBtn" class="btn ghost sm" hidden>Beenden</button>
       <button class="btn ghost sm" data-raus>Verlassen</button>
     </header>
@@ -130,6 +167,24 @@
   </div>
 </section>
 
+<!-- 18+-Abfrage. Keine echte Schranke – aber der Unterschied zwischen
+     „aus Versehen" und „bewusst" soll dokumentiert sein. Sie kommt zweimal:
+     beim Einschalten und – wichtiger – beim Beitritt in einen Raum, der schon
+     so eingestellt ist. Dort hat man die Entscheidung nicht selbst getroffen. -->
+<div id="ab18Gate" hidden>
+  <div class="gate-inner">
+    <h2>🔞 Wörter ab 18</h2>
+    <p id="ab18Text">In diesem Stapel geht es um Sex, Körper und Rausch – die
+       Paare sind mit Absicht derb. Nur weiterspielen, wenn alle am Tisch
+       volljährig sind und Lust darauf haben.</p>
+    <p class="gate-klein">Der Host kann jederzeit auf „Harmlos“ zurückstellen,
+       und laut vorlesen muss ohnehin niemand etwas – auf dem Bildschirm steht
+       nur ein Wort.</p>
+    <button id="ab18Ja" class="btn primary big">Ich bin 18 oder älter</button>
+    <button id="ab18Nein" class="btn ghost">Lieber harmlos</button>
+  </div>
+</div>
+
 <div id="help" hidden>
   <div class="help-inner">
     <h2>So läuft das</h2>
@@ -138,7 +193,17 @@
           Handy. Das Handy hält nur das Wort geheim – gespielt wird zwischen
           euch.</li>
       <li><b>Alle bekommen dasselbe Wort</b> – bis auf einen. Der sieht nur,
-          dass er der Imposter ist.</li>
+          dass er der Imposter ist. So läuft die <b>klassische</b> Art.</li>
+      <li><b>„Zwei Wörter“ ist die zweite Art</b>, und die dreht den Kniff um:
+          <b>jeder</b> bekommt ein Wort, aber eines davon ist ein anderes –
+          Museum bei den einen, Bordell bei dem einen. Niemand weiß, wer der
+          Abweichler ist, <b>auch der Abweichler nicht</b>. Alle reden also in
+          gutem Glauben, und es dauert, bis jemand merkt, dass da etwas nicht
+          zusammenpasst.</li>
+      <li><b>Die Paare sind mit Absicht schräg:</b> die Beschreibungen passen
+          auf beides, die Bedeutung liegt weit auseinander. Wer bei „man zahlt
+          Eintritt, schaut sich um und fasst besser nichts an“ nickt, hat
+          nichts verraten – und trotzdem ist am Ende einer im falschen Film.</li>
       <li><b>Die Karte liegt zugedeckt.</b> Zum Ansehen den Deckel nach oben
           schieben und halten – beim Loslassen fällt er wieder zu. Dein Handy
           kann also offen liegen bleiben; anlassen ist sogar besser, sonst

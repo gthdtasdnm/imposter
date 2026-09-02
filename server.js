@@ -14,6 +14,7 @@
 // die der Server verwaltet – es ist ein Satz, den alle gleich lesen.
 
 import { zieheBegriff } from "./begriffe.js";
+import { STAPEL, ziehePaar } from "./paare.js";
 import {
   absender,
   darfRaumOeffnen,
@@ -31,6 +32,18 @@ const PUBLIC = new URL("./public/", import.meta.url);
 // ---------------------------------------------------------------------------
 // Spielkonstanten
 // ---------------------------------------------------------------------------
+
+// Zwei Betriebsarten. Sie unterscheiden sich in genau einer Sache – ob der
+// Imposter weiss, dass er es ist:
+//
+//   klassisch  alle bekommen ein Wort, einer bekommt keins und weiss Bescheid.
+//   blind      **jeder** bekommt ein Wort, eines davon ist ein anderes. Niemand
+//              weiss, wer der Abweichler ist, auch der Abweichler nicht.
+//
+// Der Stapel gilt nur fuer „blind": die derben Woerter stehen in `paare.js` und
+// sind dort ein **eigener** Stapel, der nie untergemischt wird. In der
+// klassischen Art wird `paare.js` gar nicht erst angefasst.
+const ARTEN = ["klassisch", "blind"];
 
 const MAX_PLAYERS = 10;
 // Drei genuegt jetzt. Frueher waren vier noetig, weil die Abstimmung auf dem
@@ -111,14 +124,19 @@ function shuffle(list) {
   return list;
 }
 
-function createRoom(isPublic) {
+function createRoom(isPublic, art, stapel) {
   const room = {
     code: newCode(),
     isPublic: !!isPublic,
+    art: ARTEN.includes(art) ? art : "klassisch",
+    // Voreinstellung ist der harmlose Stapel – wer die derben Woerter will,
+    // muss sie ausdruecklich einschalten und dabei einmal bestaetigen.
+    stapel: STAPEL.includes(stapel) ? stapel : "harmlos",
     phase: "lobby",
     hostId: null,
     players: new Map(),
     letzteGruppe: null,
+    letztesPaar: null,
     letzterImposter: null,
     letzterStarter: null,
     rundeNr: 0,
@@ -199,6 +217,14 @@ function hostWacht(room) {
   }, HOST_GRACE_MS);
 }
 
+/**
+ * Steht in diesem Raum der 18+-Stapel? Nur wenn beides zusammenkommt – die
+ * blinde Art **und** der derbe Stapel. Der Wert geht an den Client und in die
+ * Raumliste: die Abfrage vor dem Beitritt ist der wichtigere der beiden Faelle,
+ * dort hat man die Einstellung schliesslich nicht selbst getroffen.
+ */
+const istAb18 = (room) => room.art === "blind" && room.stapel === "derb";
+
 const anwesende = (room) => [...room.players.values()].filter((p) => p.connected);
 
 // ---------------------------------------------------------------------------
@@ -241,6 +267,9 @@ function roomState(room) {
     code: room.code,
     isPublic: room.isPublic,
     phase: room.phase,
+    art: room.art,
+    stapel: room.stapel,
+    ab18: istAb18(room),
     hostId: room.hostId,
     players: publicPlayers(room),
     rundeNr: room.rundeNr,
@@ -264,6 +293,8 @@ function roomList() {
     .map(({ room, count }) => ({
       code: room.code,
       host: room.players.get(room.hostId)?.name ?? "?",
+      art: room.art,
+      ab18: istAb18(room),
       count,
       max: MAX_PLAYERS,
       min: MIN_PLAYERS,
@@ -302,8 +333,21 @@ function neueRunde(room) {
     return;
   }
 
-  const { gruppe, begriff } = zieheBegriff(room.letzteGruppe);
-  room.letzteGruppe = gruppe;
+  // Der einzige Unterschied zwischen den Arten steckt in diesen paar Zeilen:
+  // welche Woerter gezogen werden. Alles danach – wer der Abweichler ist, wer
+  // anfaengt, wie ausgeteilt wird – ist in beiden Arten dasselbe.
+  let gruppe = null, begriff = null, sonderwort = null;
+  if (room.art === "blind") {
+    const { viele, einer, paar } = ziehePaar(room.stapel, room.letztesPaar);
+    room.letztesPaar = paar;
+    begriff = viele;
+    sonderwort = einer;
+  } else {
+    const gezogen = zieheBegriff(room.letzteGruppe);
+    gruppe = gezogen.gruppe;
+    begriff = gezogen.begriff;
+    room.letzteGruppe = gruppe;
+  }
 
   // Nicht zweimal hintereinander dieselbe Person – sonst hoert die Runde auf,
   // ueberhaupt zu verdaechtigen, sobald es einmal jemanden erwischt hat.
@@ -320,8 +364,13 @@ function neueRunde(room) {
   room.rundeNr++;
   room.phase = "runde";
   room.aktuell = {
+    art: room.art,
     gruppe,
     begriff,
+    // Nur in der blinden Art belegt: das abweichende Wort. Es geht an genau
+    // einen Spieler und sonst an niemanden – auch nicht als Nebensatz in
+    // irgendeiner anderen Nachricht.
+    sonderwort,
     imposterId: imposter.id,
     starterId: starter.id,
     richtung,
@@ -342,21 +391,34 @@ function neueRunde(room) {
 
 /**
  * Die Karte geht an jeden einzeln – und das ist hier kein Detail, sondern das
- * ganze Spiel: `begriff` geht an alle **ausser** den Imposter, und der Imposter
- * bekommt nichts als die Nachricht, dass er es ist.
+ * ganze Spiel.
+ *
+ *   klassisch  `begriff` geht an alle **ausser** den Imposter, und der Imposter
+ *              bekommt nichts als die Nachricht, dass er es ist.
+ *   blind      jeder bekommt ein Wort, der Abweichler seines – und **niemand**
+ *              bekommt `binImposter`. Wuerde hier auch nur ein `false` zu viel
+ *              stehen, koennte man am eigenen Geraet ablesen, was man nicht
+ *              wissen darf. Deshalb ist der Wert in dieser Art immer `false`,
+ *              fuer alle, und die Wahrheit steht erst in der Aufloesung.
  */
 function karteFuer(room, p) {
   const cur = room.aktuell;
+  const blind = cur.art === "blind";
   const dabei = cur.dabei.has(p.id);
-  const binImposter = dabei && p.id === cur.imposterId;
+  const abweichler = dabei && p.id === cur.imposterId;
+  const binImposter = !blind && abweichler;
   const imposter = room.players.get(cur.imposterId);
   const starter = room.players.get(cur.starterId);
+  const meinWort = blind
+    ? (dabei ? (abweichler ? cur.sonderwort : cur.begriff) : null)
+    : (dabei && !abweichler ? cur.begriff : null);
   return {
     t: "karte",
     n: room.rundeNr,
+    art: cur.art,
     dabei,
     binImposter,
-    begriff: dabei && !binImposter ? cur.begriff : null,
+    begriff: meinWort,
     // Kein Geheimnis: die Ansage ist fuer alle dieselbe und steht offen auf
     // dem Bildschirm, auch waehrend die Karte noch zugedeckt ist.
     ansage: {
@@ -374,6 +436,7 @@ function karteFuer(room, p) {
         imposterName: imposter?.name ?? "?",
         begriff: cur.begriff,
         gruppe: cur.gruppe,
+        sonderwort: cur.sonderwort,
       }
       : null,
   };
@@ -397,6 +460,7 @@ function backToLobby(room) {
   room.aktuell = null;
   room.rundeNr = 0;
   room.letzteGruppe = null;
+  room.letztesPaar = null;
   room.letzterImposter = null;
   room.letzterStarter = null;
   pushState(room);
@@ -465,7 +529,7 @@ function handle(ws, msg) {
       return raw(ws, { t: "error", msg: "Zu viele Räume in kurzer Zeit. Warte kurz." });
     }
     raumVermerkt(ws._ip);
-    const r = createRoom(msg.isPublic);
+    const r = createRoom(msg.isPublic, msg.art, msg.stapel);
     const p = makePlayer(msg.name);
     r.hostId = p.id;
     r.players.set(p.id, p);
@@ -521,11 +585,17 @@ function handle(ws, msg) {
       if (room.aktuell) pushKarten(room);
       break;
 
-    // Einzustellen gibt es genau eine Sache: ob der Raum in der Liste steht.
-    // Das Hilfswort ist am 19.08.2026 ersatzlos geflogen – siehe README.
+    // Drei Sachen: ob der Raum in der Liste steht, welche Betriebsart gilt und
+    // – nur fuer die blinde Art – welcher Stapel. Alles nur im Warteraum und
+    // nur vom Host: mitten in der Runde umzuschalten hiesse, dass die Haelfte
+    // des Tisches mit Woertern aus dem einen und die andere aus dem anderen
+    // Stapel dasitzt. Das Hilfswort ist am 19.08.2026 ersatzlos geflogen –
+    // siehe README.
     case "settings": {
       if (player.id !== room.hostId || room.phase !== "lobby") break;
       if (typeof msg.isPublic === "boolean") room.isPublic = msg.isPublic;
+      if (ARTEN.includes(msg.art)) room.art = msg.art;
+      if (STAPEL.includes(msg.stapel)) room.stapel = msg.stapel;
       pushState(room);
       pushRoomList();
       break;
