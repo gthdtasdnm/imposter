@@ -45,6 +45,19 @@ const PUBLIC = new URL("./public/", import.meta.url);
 // klassischen Art wird `paare.js` gar nicht erst angefasst.
 const ARTEN = ["klassisch", "blind"];
 
+/**
+ * Fristen aus der Umgebung, sonst die Vorgabe. Die Variablen sind nicht für den
+ * Betrieb da, sondern damit `werkzeug/lobbyprobe.mjs` einen Fall in Sekunden
+ * statt in Minuten prüfen kann.
+ */
+function frist(name, vorgabe) {
+  try {
+    const n = Number(Deno.env.get(name));
+    if (Number.isFinite(n) && n >= 200) return n;
+  } catch { /* ohne --allow-env: dann eben die Vorgabe */ }
+  return vorgabe;
+}
+
 const MAX_PLAYERS = 10;
 // Drei genuegt jetzt. Frueher waren vier noetig, weil die Abstimmung auf dem
 // Handy lief und zu dritt ein Muenzwurf gewesen waere – abgestimmt wird aber
@@ -63,17 +76,18 @@ const MIN_PLAYERS = 3;
 // davon gemerkt.
 //
 // Endgueltig geht nur, wer selbst auf „Verlassen" tippt.
-const ROOM_IDLE_MS = 30 * 60_000;    // leerer Raum bleibt so lange stehen
-const SEAT_GRACE_MS = 20 * 60_000;   // Platz bleibt so lange reserviert
+const ROOM_IDLE_MS = frist("RAUM_MS", 30 * 60_000);   // leerer Raum
+const SEAT_GRACE_MS = frist("SITZ_MS", 20 * 60_000);  // Platz in der Runde
+// Im Warteraum kürzer: dort sperrt ein gehaltener Platz jemand anderen aus,
+// in der Runde nicht. Fünf Minuten decken den Fall ab, für den es die Frist
+// hier überhaupt gibt – den Link verschicken, ohne den Platz zu verlieren.
+const LOBBY_GRACE_MS = frist("LOBBY_MS", 5 * 60_000);
 // Das Hostzeichen ist die eine Ausnahme: es muss wandern, sonst kann niemand
 // mehr austeilen. Aber nicht sofort – eine Dreiviertelminute lang wartet der
 // Tisch lieber, als dass das Zeichen bei jedem gesperrten Bildschirm springt.
 // Ueber `HOST_MS` verkuerzbar – nicht fuer den Betrieb, sondern damit man den
 // Wechsel von Hand nachstellen kann, ohne 45 Sekunden dazusitzen.
-const HOST_GRACE_MS = (() => {
-  const n = Number(Deno.env.get("HOST_MS"));
-  return Number.isFinite(n) && n >= 200 ? n : 45_000;
-})();
+const HOST_GRACE_MS = frist("HOST_MS", 45_000);
 
 // ---------------------------------------------------------------------------
 // Raeume
@@ -647,6 +661,10 @@ function dropPlayer(ws, { immediate = false } = {}) {
   player.connected = false;
   player.ws = null;
   player.lastSeen = Date.now();
+  // `ready` bleibt stehen, solange der Platz steht – sonst muss nach jedem
+  // Netzwackler noch einmal getippt werden, und bis dahin ist der Startknopf
+  // des Hosts gesperrt.
+  if (immediate) player.ready = false;
 
   // Endgueltig geht nur, wer selbst auf „Verlassen" getippt hat. Alles andere
   // – gesperrter Bildschirm, weggewischter Tab, Funkloch, leerer Akku – ist
@@ -659,7 +677,8 @@ function dropPlayer(ws, { immediate = false } = {}) {
   }
 
   if (player.dropTimer) clearTimeout(player.dropTimer);
-  player.dropTimer = setTimeout(() => releaseSeat(room, player.id), SEAT_GRACE_MS);
+  const gnade = room.phase === "lobby" ? LOBBY_GRACE_MS : SEAT_GRACE_MS;
+  player.dropTimer = setTimeout(() => releaseSeat(room, player.id), gnade);
 
   hostWacht(room);
   // Ist niemand mehr da, faengt die Uhr des leeren Raums an zu laufen. Sie
@@ -833,14 +852,15 @@ setInterval(() => {
  * Startknopf, den niemand mehr druecken kann (Bugreport 4).
  *
  * `connected` allein ist deshalb kein Nachweis. Der Client meldet sich alle
- * 25 s mit `ping`, auch wenn niemand spielt; jede eingehende Nachricht
- * stempelt `lastSeen`. Wer zwei Pings lang schweigt, wird behandelt wie einer,
- * dessen Verbindung ordentlich zuging.
+ * 20 s mit `ping`, auch wenn niemand spielt; jede eingehende Nachricht
+ * stempelt `lastSeen`.
+ *
+ * Die Wache stellt nur fest, dass eine Verbindung tot ist – sie wirft niemanden
+ * aus dem Raum. Der Platz geht in dieselbe Karenzzeit wie bei einem sauber
+ * geschlossenen Socket. Und sie lässt sich Zeit damit: 180 s statt der früheren
+ * 65 s, das sind neun ausgefallene Pings statt zwei.
  */
-const GEIST_MS = (() => {
-  const n = Number(Deno.env.get("GEIST_MS"));
-  return Number.isFinite(n) && n >= 1000 ? n : 65_000;
-})();
+const GEIST_MS = frist("GEIST_MS", 180_000);
 
 setInterval(() => {
   const jetzt = Date.now();
